@@ -5,6 +5,7 @@
  */
 package munrov2;
 
+import java.awt.geom.Rectangle2D;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -266,9 +267,11 @@ public WFObjWriter (double[] ul, double[] lr) {
              double[] boxBoundary = {this.xULCorner, this.yULCorner, width , height};
         
        // Dem gt30w020n90Dem = new Dem(boxBoundary, FileDir, FileNamePt1);
-       Dem gt30w020n90Dem = new Dem(boxBoundary);
+       
+       Rectangle2D rect2DBox = new Rectangle2D.Double(this.xULCorner, this.yULCorner, width , height);
+       Dem gt30w020n90Dem = new Dem(rect2DBox);
         gt30w020n90Dem.toStringHdr();
-        gt30w020n90Dem.readDemV2();
+        gt30w020n90Dem.readDem();
         this.z=(gt30w020n90Dem.z).clone();
        // z = dem.getZ();
    //    z = GetZ(nofCols, nofRows).clone(); 

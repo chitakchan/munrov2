@@ -6,26 +6,18 @@
 package munrov2;
 
 import java.awt.FlowLayout;
-import java.awt.Image;
 import java.awt.Rectangle;
+import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
-import java.awt.image.DataBufferByte;
 import java.awt.image.DataBufferUShort;
 import java.awt.image.Raster;
 import java.awt.image.WritableRaster;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -49,7 +41,7 @@ public class Dem {
       
     double[][] x, y;
     short[][] z;
-    int nofRows, nofCols;
+    // int nofRows, nofCols;
     
     private static final Logger logger = Logger.getLogger(Dem.class.getName());
     
@@ -58,9 +50,10 @@ public class Dem {
     String byteOrder, layout;
     int nRows, nCols, nBands, nBits, bandRowBytes, totalRowBytes, bandGapBytes, noData;
     double ulXmap, ulYmap, xDim, yDim;
-    double ulXBox, ulYBox, xBoxWidth, yBoxWidth;
+
     String strDemDir, strDemFileName;
-    
+    Rectangle2D rectBox = new Rectangle2D.Double();
+    Rectangle rectBoxIdx = new Rectangle();
     /*
     *  constructor to get the upper left corner then the width and length of the boundary
     * 1. read parameter settings from header file
@@ -69,56 +62,32 @@ public class Dem {
     */
     
     // https://stackoverflow.com/questions/581873/best-way-to-handle-multiple-constructors-in-java
-    /*
-    
-    public Dem (Rectangle rect){
-               this ({rect.x, rect.y, rect.width, rect.height}, 
-               new UserProperties().getProperties("Gtopo30.dem.dir"), 
-               new UserProperties().getProperties("default.demFileNamePt1"));
-    }
-    
-    */
-    
-    public Dem (Rectangle rect, String strDemDir, String strDemFileName){
-        
-        ulXBox =rect.x;
-        ulYBox = rect.y;
-        xBoxWidth = rect.width;
-        yBoxWidth = rect.height;
-        this.strDemDir = strDemDir;
-        this.strDemFileName = strDemFileName;
-        readHdr();
-     //   readDem();
-        
-    }
-    
-    public Dem (double[] boundary){
+      
+      
+    public Dem (Rectangle2D rectBox){
          
-       this (boundary, 
+       this (rectBox, 
                new UserProperties().getProperties("Gtopo30.dem.dir"), 
                new UserProperties().getProperties("default.demFileNamePt1"));
     }
     
     
     
-    public Dem (double[] boundary, String strDemDir, String strDemFileName){
+    public Dem (Rectangle2D rectBox, String strDemDir, String strDemFileName){
         
-        ulXBox = boundary[0];
-        ulYBox = boundary[1];
-        xBoxWidth = boundary[2];
-        yBoxWidth = boundary[3];
+        this.rectBox = rectBox;
+        
         this.strDemDir = strDemDir;
         this.strDemFileName = strDemFileName;
         readHdr();
-     //   readDem();
-        
+        // focus on the box boundary defined in the constructor
+        this.rectBoxIdx = new Rectangle (
+                (int) ((this.rectBox.getX() - this.ulXmap)/this.xDim),
+                (int) ((- this.rectBox.getY() + this.ulYmap)/this.yDim),
+                (int) (this.rectBox.getWidth()/this.xDim), 
+                (int) (this.rectBox.getHeight()/this.yDim)
+            );
     }
- /*
-    public short[][] getZ(){
-        return z;
-    }
-    
-    */   
     
     public short getZ(int c, int r){
         return z[c][r];
@@ -180,7 +149,7 @@ public class Dem {
     
     source: https://www.programcreek.com/java-api-examples/?api=javax.imageio.stream.ImageInputStream
     */
-    public void readDemV2()  {
+    public void readDem()  {
         FileInputStream fis = null;
         try {
             File file = new File(strDemDir+"\\"+strDemFileName+".dem");        
@@ -204,27 +173,19 @@ public class Dem {
             for (short p : pixels){
   //              sb.append(p).append(",");
             }
-            
-            
-//            logger.log(Level.INFO, "pixels with length {0}: {1}", new Object[]{pixels.length, sb.subSequence(0, 1000).toString()} );
             showImg(theImage);
             //
-            // focus on the box boundary defined in the constructor
-            int xBoxULCols = (int) ((this.ulXBox - this.ulXmap)/this.xDim);    
-            int yBoxULRows = (int) ((- this.ulYBox + this.ulYmap)/this.yDim);    
-            int xBoxWidthCols = (int) (this.xBoxWidth/this.xDim); 
-            int yBoxWidthRows = (int) (this.yBoxWidth/this.yDim); 
             
             BufferedImage subBufferImage = 
-                    theImage.getSubimage(xBoxULCols, yBoxULRows, xBoxWidthCols, yBoxWidthRows);
+                    theImage.getSubimage(rectBoxIdx.x, rectBoxIdx.y, rectBoxIdx.width, rectBoxIdx.height);
             
             DataBuffer dbSub = (subBufferImage.getRaster()).getDataBuffer();
             
-            // copy a region using .getData(rect)
+            // copy a region using .getData(rectBoxIdx)
             // see https://www.tutorialspoint.com/java_dip/understand_image_pixels.htm
             // https://stackoverflow.com/questions/36462710/bufferedimage-extract-subimage-with-same-data
             //
-            Rectangle rect = new Rectangle(xBoxULCols, yBoxULRows, xBoxWidthCols, yBoxWidthRows);
+            // Rectangle rectBoxIdx = new Rectangle(xBoxULCols, yBoxULRows, xBoxWidthCols, yBoxWidthRows);
             // the .getData() method on the subImage would also returns the same data array as the original image,
             // hence the size of array is the same as the parent one.
             // see https://stackoverflow.com/questions/36462710/bufferedimage-extract-subimage-with-same-data
@@ -239,8 +200,8 @@ public class Dem {
 
             // create new raster, cast to writable and translate it to 0,0
             WritableRaster subRaster = 
-                    ((WritableRaster) theImage.getData(rect)).createWritableTranslatedChild(0,0);
-                    // ((WritableRaster) theImage.getData(rect)).createWritableTranslatedChild(xBoxULCols, yBoxULRows);
+                    ((WritableRaster) theImage.getData(rectBoxIdx)).createWritableTranslatedChild(0,0);
+                    // ((WritableRaster) theImage.getData(rectBoxIdx)).createWritableTranslatedChild(xBoxULCols, yBoxULRows);
             
             BufferedImage subOne = new BufferedImage(theImage.getColorModel(), 
                     subRaster, theImage.isAlphaPremultiplied(), null);
@@ -250,15 +211,15 @@ public class Dem {
             showImg(subOne);
             logger.log(Level.INFO, "new subOne has data length of {0}", pixelsSubOne.length);
             
-            z = new short[yBoxWidthRows][xBoxWidthCols];
+            z = new short[rectBoxIdx.y][rectBoxIdx.x];
             
-            for (int i=0; i<yBoxWidthRows; i++ ) {
-                for (int j=0; j<xBoxWidthCols; j++){
-                    z[i][j] = pixelsSubOne[i*xBoxWidthCols + j];
+            for (int i=0; i<rectBoxIdx.y; i++ ) {
+                for (int j=0; j<rectBoxIdx.x; j++){
+                    z[i][j] = pixelsSubOne[i*rectBoxIdx.width + j];
                 }
             }
             logger.log(Level.INFO, "boundary[x {0}][y {1}][width {2}][height {3}]\n", 
-                    new Object[]{rect.x,rect.y,rect.width,rect.height});
+                    new Object[]{rectBoxIdx.x,rectBoxIdx.y,rectBoxIdx.width,rectBoxIdx.height});
             logger.log(Level.INFO, "z[i][j] has height [{0}] width [{1}]", new Object[]{z.length, z[0].length});
             
         } catch (FileNotFoundException ex) {
@@ -275,266 +236,6 @@ public class Dem {
     }        
 
 
-    
-    private void readDemV1a() {
-        File file = new File(strDemDir+"\\"+strDemFileName+".dem");
-     //   ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        try {
-            // FileInputStream obtains streams of bytes
-            FileInputStream fis = new FileInputStream(file);
-            DataInputStream dis = new DataInputStream(fis);
-            BufferedImage theImage = 
-                    new BufferedImage(nCols, nRows, BufferedImage.TYPE_USHORT_GRAY);
-
-
-
-            
-            showImg(theImage);        // checking            
-            // focus on the box boundary defined in the constructor
-            int xBoxULCols = (int) ((this.ulXBox - this.ulXmap)/this.xDim);    
-            int yBoxULRows = (int) ((- this.ulYBox + this.ulYmap)/this.yDim);    
-            int xBoxWidthCols = (int) (this.xBoxWidth/this.xDim); 
-            int yBoxWidthRows = (int) (this.yBoxWidth/this.yDim); 
-            
-            // copy a region using .getData(rect)
-            // see https://www.tutorialspoint.com/java_dip/understand_image_pixels.htm
-            Rectangle rect = new Rectangle(xBoxULCols, yBoxULRows, xBoxWidthCols, yBoxWidthRows);
-
-
-
-            
-            BufferedImage subBufferImage = 
-                    theImage.getSubimage(xBoxULCols, yBoxULRows, xBoxWidthCols, yBoxWidthRows);
-            showImg(subBufferImage);        // checking
-            short[] subBufferImageData = 
-                    ((DataBufferUShort) subBufferImage.getRaster().getDataBuffer()).getData();
-            
-            short[] pixels = ((DataBufferUShort) 
-                    theImage.getSubimage(xBoxULCols, yBoxULRows, xBoxWidthCols, 
-                            yBoxWidthRows).getRaster().getDataBuffer()).getData();
-            
-            StringBuilder sbSubImage = new StringBuilder("");
-            
-            // load elevation data to z[][]
-            short[][] z = new short[xBoxWidthCols][yBoxWidthRows];
-            
-            // read all the subbox data from file
-            
-                 outerloop:
-            for (int i=0; i < pixels.length; i++) {
-             
-            //    for (int j=0; j< 1000; j++){
-                    pixels[i] = dis.readShort();
-                    if (i>1000) break;
-             //   }
-             
-            }
-            
-            
-            
-            for (int i=0; i<yBoxWidthRows; i++){
-                // dont worry about cumulating memory use for creating new instance of sbOneRow, 
-                // the GC garbage collect will handle the job
-                StringBuilder sbOneRow = new StringBuilder("");     
-                sbOneRow.append(i).append(": ");
-                // System.out.println("i: "+i + "\n");
-                for (int j=0; j<xBoxWidthCols; j++){
-            //        z[i][j]=subBufferImageData[i*yBoxWidthRows+j];
-                          
-                          // z[i][j]=dis.readShort();
-                          z[i][j]=pixels[i*yBoxWidthRows+j];
-                    sbOneRow.append(z[i][j]).append(',');
-                    // System.out.println(z[i][j] + ",");
-                }
-                sbSubImage.append(sbOneRow.toString()).append('\n');
-                logger.log(Level.INFO, "i={0}: {1}", new Object[]{i, sbOneRow.toString()});
-            }
-            /*
-            for (int i=0; i<subBufferImageData.length; i++){
-                sbSubImage.append(subBufferImageData[i]).append(";");
-                
-            }
-            */
-            StringBuilder sbBoxParameters = new StringBuilder("");
-            sbBoxParameters.append("xBoxULCols: ").append(xBoxULCols).append("\n");
-            sbBoxParameters.append("yBoxULRows: ").append(yBoxULRows).append("\n");
-            sbBoxParameters.append("xBoxWidthCols: ").append(xBoxWidthCols).append("\n");
-            sbBoxParameters.append("yBoxWidthRows: ").append(yBoxWidthRows).append("\n");
-            sbBoxParameters.append("ulXBox: ").append(ulXBox).append("\n");
-            sbBoxParameters.append("ulYBox: ").append(ulYBox).append("\n");
-            sbBoxParameters.append("xBoxWidth: ").append(xBoxWidth).append("\n");
-            sbBoxParameters.append("yBoxWidth: ").append(yBoxWidth).append("\n");
-            sbBoxParameters.append("xDim: ").append(xDim).append("\n");
-            sbBoxParameters.append("yDim: ").append(yDim).append("\n");
-            logger.log(Level.INFO, "subImage Parameters: \n {0}\n", sbBoxParameters.toString());
-            
-            
-            } catch (IOException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    }
-    
-private void readDemV1() {
-        File file = new File(strDemDir+"\\"+strDemFileName+".dem");
-     //   ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        try {
-            // FileInputStream obtains streams of bytes
-            FileInputStream fis = new FileInputStream(file);
-            DataInputStream dis = new DataInputStream(fis);
-            BufferedImage theImage = 
-                    new BufferedImage(nCols, nRows, BufferedImage.TYPE_USHORT_GRAY);
-
-
-            
-            
-            showImg(theImage);        // checking            
-            // focus on the box boundary defined in the constructor
-            int xBoxULCols = (int) ((this.ulXBox - this.ulXmap)/this.xDim);    
-            int yBoxULRows = (int) ((- this.ulYBox + this.ulYmap)/this.yDim);    
-            int xBoxWidthCols = (int) (this.xBoxWidth/this.xDim); 
-            int yBoxWidthRows = (int) (this.yBoxWidth/this.yDim); 
-            
-            // copy a region using .getData(rect)
-            // see https://www.tutorialspoint.com/java_dip/understand_image_pixels.htm
-            Rectangle rect = new Rectangle(xBoxULCols, yBoxULRows, xBoxWidthCols, yBoxWidthRows);
-            
-            BufferedImage subBufferImage = 
-                    theImage.getSubimage(xBoxULCols, yBoxULRows, xBoxWidthCols, yBoxWidthRows);
-            showImg(subBufferImage);        // checking
-            short[] subBufferImageData = 
-                    ((DataBufferUShort) subBufferImage.getRaster().getDataBuffer()).getData();
-            
-            short[] pixels = ((DataBufferUShort) 
-                    theImage.getSubimage(xBoxULCols, yBoxULRows, xBoxWidthCols, 
-                            yBoxWidthRows).getRaster().getDataBuffer()).getData();
-            
-            StringBuilder sbSubImage = new StringBuilder("");
-            
-            // load elevation data to z[][]
-            short[][] z = new short[xBoxWidthCols][yBoxWidthRows];
-            
-            // read all the subbox data from file
-            
-                 outerloop:
-            for (int i=0; i < pixels.length; i++) {
-             
-            //    for (int j=0; j< 1000; j++){
-                    pixels[i] = dis.readShort();
-                    if (i>1000) break;
-             //   }
-             
-            }
-            
-            
-            
-            for (int i=0; i<yBoxWidthRows; i++){
-                // dont worry about cumulating memory use for creating new instance of sbOneRow, 
-                // the GC garbage collect will handle the job
-                StringBuilder sbOneRow = new StringBuilder("");     
-                sbOneRow.append(i).append(": ");
-                // System.out.println("i: "+i + "\n");
-                for (int j=0; j<xBoxWidthCols; j++){
-            //        z[i][j]=subBufferImageData[i*yBoxWidthRows+j];
-                          
-                          // z[i][j]=dis.readShort();
-                          z[i][j]=pixels[i*yBoxWidthRows+j];
-                    sbOneRow.append(z[i][j]).append(',');
-                    // System.out.println(z[i][j] + ",");
-                }
-                sbSubImage.append(sbOneRow.toString()).append('\n');
-                logger.log(Level.INFO, "i={0}: {1}", new Object[]{i, sbOneRow.toString()});
-            }
-            /*
-            for (int i=0; i<subBufferImageData.length; i++){
-                sbSubImage.append(subBufferImageData[i]).append(";");
-                
-            }
-            */
-            StringBuilder sbBoxParameters = new StringBuilder("");
-            sbBoxParameters.append("xBoxULCols: ").append(xBoxULCols).append("\n");
-            sbBoxParameters.append("yBoxULRows: ").append(yBoxULRows).append("\n");
-            sbBoxParameters.append("xBoxWidthCols: ").append(xBoxWidthCols).append("\n");
-            sbBoxParameters.append("yBoxWidthRows: ").append(yBoxWidthRows).append("\n");
-            sbBoxParameters.append("ulXBox: ").append(ulXBox).append("\n");
-            sbBoxParameters.append("ulYBox: ").append(ulYBox).append("\n");
-            sbBoxParameters.append("xBoxWidth: ").append(xBoxWidth).append("\n");
-            sbBoxParameters.append("yBoxWidth: ").append(yBoxWidth).append("\n");
-            sbBoxParameters.append("xDim: ").append(xDim).append("\n");
-            sbBoxParameters.append("yDim: ").append(yDim).append("\n");
-            logger.log(Level.INFO, "subImage Parameters: \n {0}\n", sbBoxParameters.toString());
-            /*
-            logger.log(Level.INFO, "SubImage parameters:\nxBoxULCols {0} \nyBoxULRows {1} \nxBoxWidthCols {2} \nyBoxWidthRows {3} \nulXBox {4} \nulYBox {5} \nxBoxWidth {6} \nyBoxWidth {7) \n", 
-                    new Object[]{xBoxULCols, yBoxULRows, xBoxWidthCols, 
-                        yBoxWidthRows, ulXBox, ulYBox, xBoxWidth, yBoxWidth});
-            
-            */
-            
-            
-    //        logger.log(Level.INFO, "sbSubImage:\n{0}", sbSubImage.toString());
-
-                
-            // StringBuilder sb = new StringBuilder("");
-            /*
-                  ArrayList<StringBuilder> arraySb = new ArrayList<StringBuilder>();
-            outerloop:
-            for (int i=0; i < pixels.length; i++) {
-                StringBuilder sb = new StringBuilder("");
-                for (int j=0; j< 1000; j++){
-                    pixels[i] = dis.readShort();
-                    sb.append(pixels[i]).append(";");
-                    
-                
-                // if (i > 1000) {break outerloop;}
-                }
-                arraySb.add(sb);
-            }
-
-          logger.log(Level.INFO, "no of pixels: {0} \n", 
-                        pixels.length);
-          
-          for (int i =0; i<arraySb.size(); i++){
-            logger.log(Level.INFO, "i={0} \n arraySb.get(i): {1}\n", 
-                        new Object[]{i, arraySb.get(i).toString()});
-            
-          }
-          
-            */
-            
-      
-            
-            } catch (IOException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    }
-    
-    private void readDemByByte(String strDemDir, String strDemFileName) {
-        File file = new File(strDemDir+"\\"+strDemFileName+".dem");
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        try {
-            // FileInputStream obtains streams of bytes
-            FileInputStream fis = new FileInputStream(file);
-            byte[] buf = new byte[1024];
-            int count = 0;
-            outerloop:
-            for (int readNum; (readNum = fis.read(buf))!=-1;){
-                bos.write(buf, 0, readNum);
-                StringBuilder sb = new StringBuilder("");
-                for (int i=0; i<buf.length; i++){
-                    
-                    sb.append(buf[i]).append(";");
-                }
-                logger.log(Level.INFO, "readNum: {0} \n input: {1}\n", 
-                        new Object[]{readNum, sb});
-                count += 1;
-                if (count > 100) {break outerloop;}
-            }
-        } catch (FileNotFoundException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (IOException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    }
-    
     /**
      * a quick method to show the Buffered Image
      * to check whether Buffered Images are read correctly
@@ -565,14 +266,18 @@ private void readDemV1() {
         String sDir = pop.getProperties("my.dear.home");
         String FileDir=sDir + "\\Bulk Order Scotlad GMTED2010 30Arc SECAND GTOPO30 Geotiff\\Dem\\GTOPO30";
         String FileNamePt1 = "gt30w020n90";
-        
-        double[] boxBoundary = {-7.1, 58.8, 5.5, 4.5};
+        // to use Rectangle with double instead of int you need to use Rectangle2D
+       // https://stackoverflow.com/questions/2214456/rectangle-and-rectangle2d-difference
+       // 
+        Rectangle2D rect2DBox = new Rectangle2D.Double(-7.1, 58.8, 5.5, 4.5);
+        // Rectangle rectBoxIdx = new Rectangle(-7.1, 58.8, 5.5, 4.5);
+        // double[] boxBoundary = {-7.1, 58.8, 5.5, 4.5};
         
        // Dem gt30w020n90Dem = new Dem(boxBoundary, FileDir, FileNamePt1);
        
-       Dem gt30w020n90Dem = new Dem(boxBoundary);
+       Dem gt30w020n90Dem = new Dem(rect2DBox);
         gt30w020n90Dem.toStringHdr();
-        gt30w020n90Dem.readDemV2();
+        gt30w020n90Dem.readDem();
         
         
     }
