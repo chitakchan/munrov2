@@ -53,6 +53,7 @@ public class Dem {
 
     String strDemDir, strDemFileName;
     Rectangle2D rectBox = new Rectangle2D.Double();
+    Rectangle2D adjRect2DBox = new Rectangle2D.Double();
     Rectangle rectBoxIdx = new Rectangle();
     /*
     *  constructor to get the upper left corner then the width and length of the boundary
@@ -87,6 +88,16 @@ public class Dem {
                 (int) (this.rectBox.getWidth()/this.xDim), 
                 (int) (this.rectBox.getHeight()/this.yDim)
             );
+        
+        // recalculate the Box boundary in lat and long degree.
+        this.adjRect2DBox.setRect(
+                this.rectBoxIdx.x * this.xDim + this.ulXmap, 
+                - this.rectBoxIdx.y * this.yDim + this.ulYmap,
+                this.rectBoxIdx.width * this.xDim, this.rectBoxIdx.height * this.yDim
+                );
+                
+            //    = new Rectangle2D (0,0,0,0
+        
     }
     
     public short getZ(int c, int r){
@@ -211,10 +222,10 @@ public class Dem {
             showImg(subOne);
             logger.log(Level.INFO, "new subOne has data length of {0}", pixelsSubOne.length);
             
-            z = new short[rectBoxIdx.y][rectBoxIdx.x];
+            z = new short[rectBoxIdx.height][rectBoxIdx.width];
             
-            for (int i=0; i<rectBoxIdx.y; i++ ) {
-                for (int j=0; j<rectBoxIdx.x; j++){
+            for (int i=0; i<rectBoxIdx.height; i++ ) {
+                for (int j=0; j<rectBoxIdx.width; j++){
                     z[i][j] = pixelsSubOne[i*rectBoxIdx.width + j];
                 }
             }
