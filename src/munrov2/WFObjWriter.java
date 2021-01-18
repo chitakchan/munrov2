@@ -38,7 +38,9 @@ public class WFObjWriter {
     private static final Logger logger = Logger.
                 getLogger(WFObjWriter.class.getName());
 
-        double[][] x, y, z;
+        double[][] x, y;
+        //, z;
+        short [][] z;
           /*
         int xyIncStep = 15;
         double xULCorner = 0;
@@ -247,7 +249,8 @@ public WFObjWriter (double[] ul, double[] lr) {
         nofCols = (int) Math.ceil((xBoxWidth) / xInc) +1; // 7 / (30/3600) + 1
         nofRows = (int) Math.ceil((yBoxWidth) / yInc) +1; // -6 / (-30/3000) + 1
                 
-        z = new double[nofRows][nofCols];
+        // z = new double[nofRows][nofCols];
+        z = new short[nofRows][nofCols];
         // assume data from srmt
              
         // double xPt = xULCorner;
@@ -256,8 +259,21 @@ public WFObjWriter (double[] ul, double[] lr) {
         // get z from reading dem file, but at the moment use GetZ which generate a 
         // random figure
      //   Dem dem = new Dem(boundary);  
+     
+
+       double width = this.xLRCorner - this.xULCorner;
+       double height = this.yULCorner - this.yLRCorner;
+             double[] boxBoundary = {this.xULCorner, this.yULCorner, width , height};
+        
+       // Dem gt30w020n90Dem = new Dem(boxBoundary, FileDir, FileNamePt1);
+       Dem gt30w020n90Dem = new Dem(boxBoundary);
+        gt30w020n90Dem.toStringHdr();
+        gt30w020n90Dem.readDemV2();
+        this.z=(gt30w020n90Dem.z).clone();
        // z = dem.getZ();
-       z = GetZ(nofCols, nofRows).clone(); 
+   //    z = GetZ(nofCols, nofRows).clone(); 
+       
+       
        
         for (int r=0; r<nofRows; r++) {
             
@@ -282,55 +298,7 @@ public WFObjWriter (double[] ul, double[] lr) {
         logger.log(Level.INFO, "result: \n {0}", sb.toString() );
         
 }
-    public void CreateVerticesOld () {
-
-      
-        // work out the noofCols and noofRows based on the boundaries and the 
-        // increment step pre-defined
-        double xInc = Math.signum(xBoxWidth)*xyIncStep;
-        double yInc = Math.signum(yBoxWidth)*xyIncStep;
-        nofCols = (int) Math.ceil((xBoxWidth) / xInc) +1; // 7 / (30/3600) + 1
-        nofRows = (int) Math.ceil((yBoxWidth) / yInc) +1; // -6 / (-30/3000) + 1
-        
-        x = new double[nofRows][nofCols];
-        y = new double[nofRows][nofCols];
-        z = new double[nofRows][nofCols];
-        // assume data from srmt
-             
-        double xPt = xULCorner;
-        double yPt = yULCorner;
-        for (int r=0; r<nofRows; r++) {
-            
-            for (int c = 0; c<nofCols; c++){
-                x [r][c] = xPt;
-                y [r][c] = yPt;
-                xPt += xInc;
-                xPt = Math.min(xPt, xLRCorner);
-                // z [r][c] = zData[r][c];
-                z [r][c] = GetZ(xPt,yPt);
-                Vertice v = new Vertice(r, c, x[r][c],y[r][c],z[r][c]);
-                vertices.add(v);
-            }
-            yPt += yInc;
-            yPt = Math.max(yPt, yLRCorner);
-            xPt = xULCorner;
-        }
-        StringBuilder sb = new StringBuilder("");
-        
-        for (int r=0; r<nofRows; r++) {
-            
-            for (int c = 0; c<nofCols; c++){
-         
-                sb.append("x: ").append(x[r][c]).append(";");
-                sb.append("y: ").append(y[r][c]).append(";");
-                sb.append("z: ").append(z[r][c]).append("\n");
-            }   
-        }
-        
-        logger.log(Level.INFO, "result: \n {0}", sb.toString() );
-        
-}
- 
+    
     public void WriteObjFile() {
         String fileName = "munroproject.obj";
         String title = "#oneTriangle";
@@ -370,9 +338,11 @@ public WFObjWriter (double[] ul, double[] lr) {
              
 public static void main(String args[]){
     
-    double[] ul = new double[]{-8.010, 59.076};
-    double xWidth = 0.8, yWidth = 0.5;
+    double[] ul = new double[]{-7.1, 58.8};
+    double xWidth = 5.5, yWidth = 4.5;
     double[] lr = new double[]{ul[0] + xWidth, ul[1] - yWidth};
+    
+   double[] boxBoundary = {-7.1, 58.8, 5.5, 4.5};
     
     WFObjWriter obj = new WFObjWriter(ul, lr);
     

@@ -44,14 +44,15 @@ import javax.swing.JLabel;
  * @ref there are free software, as seen in http://vterrain.org/Packages/NonCom/
  * https://freegeographytools.com/2009/3dem-website-is-gone-but-3dem-still-available-here
  * 
+ * 
  */
-public class Dem {
+public class Dem1 {
       
     double[][] x, y;
     short[][] z;
     int nofRows, nofCols;
     
-    private static final Logger logger = Logger.getLogger(Dem.class.getName());
+    private static final Logger logger = Logger.getLogger(Dem1.class.getName());
     
     // constructure to create a dem class with digital elevation data read from a
     // designated dem file
@@ -79,7 +80,7 @@ public class Dem {
     
     */
     
-    public Dem (Rectangle rect, String strDemDir, String strDemFileName){
+    public Dem1 (Rectangle rect, String strDemDir, String strDemFileName){
         
         ulXBox =rect.x;
         ulYBox = rect.y;
@@ -92,7 +93,7 @@ public class Dem {
         
     }
     
-    public Dem (double[] boundary){
+    public Dem1 (double[] boundary){
          
        this (boundary, 
                new UserProperties().getProperties("Gtopo30.dem.dir"), 
@@ -101,7 +102,7 @@ public class Dem {
     
     
     
-    public Dem (double[] boundary, String strDemDir, String strDemFileName){
+    public Dem1 (double[] boundary, String strDemDir, String strDemFileName){
         
         ulXBox = boundary[0];
         ulYBox = boundary[1];
@@ -170,7 +171,7 @@ public class Dem {
             // Band interleaved by line.  note that the DEM is a single band image
             
         } catch (IOException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Dem1.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
     /*
@@ -262,14 +263,14 @@ public class Dem {
             logger.log(Level.INFO, "z[i][j] has height [{0}] width [{1}]", new Object[]{z.length, z[0].length});
             
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Dem1.class.getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Dem1.class.getName()).log(Level.SEVERE, null, ex);
         } finally {
             try {
                 fis.close();
             } catch (IOException ex) {
-                Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+                Logger.getLogger(Dem1.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
     }        
@@ -370,7 +371,7 @@ public class Dem {
             
             
             } catch (IOException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Dem1.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
     
@@ -503,7 +504,7 @@ private void readDemV1() {
       
             
             } catch (IOException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Dem1.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
     
@@ -529,9 +530,9 @@ private void readDemV1() {
                 if (count > 100) {break outerloop;}
             }
         } catch (FileNotFoundException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Dem1.class.getName()).log(Level.SEVERE, null, ex);
         } catch (IOException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(Dem1.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
     
@@ -570,7 +571,7 @@ private void readDemV1() {
         
        // Dem gt30w020n90Dem = new Dem(boxBoundary, FileDir, FileNamePt1);
        
-       Dem gt30w020n90Dem = new Dem(boxBoundary);
+       Dem1 gt30w020n90Dem = new Dem1(boxBoundary);
         gt30w020n90Dem.toStringHdr();
         gt30w020n90Dem.readDemV2();
         
