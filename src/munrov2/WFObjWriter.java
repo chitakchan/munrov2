@@ -54,27 +54,26 @@ import java.util.logging.Logger;
 public class WFObjWriter {
     private static final Logger logger = Logger.
                 getLogger(WFObjWriter.class.getName());
-    
 
-        double[][] x, y;
-        
-        short [][] z;
-          
-        double xyIncStep, xULCorner, yULCorner, xLRCorner, yLRCorner; // lat 57, lon -5 around fort william
-        double xBoxWidth, yBoxWidth;
-        
-        int nofRows, nofCols;
-        ArrayList<Vertice> vertices = new ArrayList<Vertice>();
-        ArrayList<TriFace> triFaces = new ArrayList<TriFace>();
-        
-        Dem gt30w020n90Dem;
-        Rectangle rectBoxIdx = null;
-        Rectangle2D adjRect2DBox;
-        public final int seaRepZ;
+    double[][] x, y;
+
+    short [][] z;
+
+    double xyIncStep, xULCorner, yULCorner, xLRCorner, yLRCorner; // lat 57, lon -5 around fort william
+    double xBoxWidth, yBoxWidth;
+
+    int nofRows, nofCols;
+    ArrayList<Vertice> vertices = new ArrayList<Vertice>();
+    ArrayList<TriFace> triFaces = new ArrayList<TriFace>();
+
+    Dem gt30w020n90Dem;
+    Rectangle rectBoxIdx = null;
+    Rectangle2D adjRect2DBox;
+    public final int seaRepZ;
     private final double xScale;
     private final double yScale;
 
-        public WFObjWriter (Rectangle2D rect2DBox) {
+    public WFObjWriter (Rectangle2D rect2DBox) {
      
         // create a dem object and retrieve the relevant idx of the box from its calculation
         
@@ -83,7 +82,7 @@ public class WFObjWriter {
         this.xyIncStep = gt30w020n90Dem.xDim;
         this.adjRect2DBox = gt30w020n90Dem.adjRect2DBox;
         logger.setLevel(Level.INFO);
-        this.seaRepZ = -2;   // sea was represented by usgs as -9999.  changed to a new value here.
+        this.seaRepZ = 0;   // sea was represented by usgs as -9999.  changed to a new value here.
         //   xyIncStep = 30.0/3600;  // need to use 30.0 otherwise the division would be treated as int and as result xyIncStep become zero.
                 //    e/w  n/s
                 // 50 598 927
@@ -94,7 +93,6 @@ public class WFObjWriter {
         
         
         }        
- 
         /*
         Not used, replaced by calling Dem class and adjust the rectangle
         */
@@ -115,10 +113,14 @@ public class WFObjWriter {
         logger.log(Level.INFO, "After adjustment with Math.ceil and floor:\nULCorner {0}, {1}; LRCorner {2}, {3}\n", new Object[]{
             xULCorner, yULCorner, xLRCorner, yLRCorner}
         );
+    }
         
-        }
-        
-        
+    /**
+     * convert the 2D index of the position into sequence number in the obj file
+     * @param r
+     * @param c
+     * @return 
+     */
     public int RC2Vno (int r, int c) {
         
         return rectBoxIdx.width * r + c;
@@ -142,7 +144,6 @@ public class WFObjWriter {
     /**
      * 
     create triangle polygon surface,
-    
     */
     public class TriFace {
         int[] triVertices = new int[6];  
@@ -200,14 +201,9 @@ public class WFObjWriter {
                 return sb.toString();
         }
     }
-    
-    /**
+     /**
      * not used
-     * @param noOfCols
-     * @param noOfRows
-     * @return 
      */
-    
     public double[][] GetZ (int noOfCols, int noOfRows ) {
         // use random number within range of say 0 to 50
         // see https://stackoverflow.com/questions/363681/how-do-i-generate-random-integers-within-a-specific-range-in-java
@@ -308,8 +304,6 @@ public class WFObjWriter {
             }
         }
         */
-        
-       
        
         for (int r=0; r<this.rectBoxIdx.height; r++) {
             
@@ -378,18 +372,15 @@ public class WFObjWriter {
         }
     }
              
-public static void main(String args[]){
+    public static void main(String args[]){
 
-     Rectangle2D rect2DBox = new Rectangle2D.Double(-7.1, 58.8, 5.5, 4.5);
-  //  Rectangle2D rect2DBox = new Rectangle2D.Double(-3.015, 56.467, 0.5, 0.5);
-    WFObjWriter obj = new WFObjWriter(rect2DBox);
-    
-    obj.CreateVertices();
-    obj.CreateSurfaces();
-    obj.WriteObjFile();
-    
-    
-    
-}    
+         Rectangle2D rect2DBox = new Rectangle2D.Double(-7.1, 58.8, 5.5, 4.5);
+      //  Rectangle2D rect2DBox = new Rectangle2D.Double(-3.015, 56.467, 0.5, 0.5);
+        WFObjWriter obj = new WFObjWriter(rect2DBox);
+
+        obj.CreateVertices();
+        obj.CreateSurfaces();
+        obj.WriteObjFile();
+    }    
     
 }
