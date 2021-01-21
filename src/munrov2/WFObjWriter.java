@@ -70,8 +70,8 @@ public class WFObjWriter {
     Rectangle rectBoxIdx = null;
     Rectangle2D adjRect2DBox;
     public final int seaRepZ;
-    private final double xScale;
-    private final double yScale;
+    private final double xScale, yScale, zScale;
+    private final double measUnit;
 
     public WFObjWriter (Rectangle2D rect2DBox) {
      
@@ -79,18 +79,20 @@ public class WFObjWriter {
         
         this.gt30w020n90Dem = new Dem(rect2DBox); 
         this.rectBoxIdx = gt30w020n90Dem.rectBoxIdx;
-        this.xyIncStep = gt30w020n90Dem.xDim;
+        this.xyIncStep = gt30w020n90Dem.xDim;  // should be 30/3600 deg between two idx
         this.adjRect2DBox = gt30w020n90Dem.adjRect2DBox;
         logger.setLevel(Level.INFO);
         this.seaRepZ = 0;   // sea was represented by usgs as -9999.  changed to a new value here.
         //   xyIncStep = 30.0/3600;  // need to use 30.0 otherwise the division would be treated as int and as result xyIncStep become zero.
-                //    e/w  n/s
-                // 50 598 927
-                // 60 465 929
-                // get the scale to translate deg to meter
-                this.xScale = (598+465)/2;
-                this.yScale = (927+929)/2;
-        
+        // ground distance for 30-arc seconds         
+        //    e/w  n/s
+        // 50 598 927
+        // 60 465 929
+        // get the scale to translate deg to meter;   0.001 refers to km, 1 refers to m.
+        this.measUnit = 0.001;
+        this.xScale = (598+465)/2/this.xyIncStep*this.measUnit;
+        this.yScale = (927+929)/2/this.xyIncStep*this.measUnit;
+        this.zScale = this.measUnit;
         
         }        
         /*
@@ -139,6 +141,18 @@ public class WFObjWriter {
                         triFaces.add(tri);
                 }
             }
+    }
+
+    private String CreateBaseSurfaces() {
+        StringBuilder sb = new StringBuilder("");
+        sb.append("f -8 -6 -5 -7").append("\n");
+        sb.append("f -4 -3 -1 -2").append("\n");
+        sb.append("f -8 -7 -3 -4").append("\n");
+        sb.append("f -6 -8 -4 -2").append("\n");
+        sb.append("f -5 -6 -2 -1").append("\n");
+        sb.append("f -7 -5 -1 -3").append("\n");
+        
+        return sb.toString();
     }
     
     /**
@@ -197,7 +211,7 @@ public class WFObjWriter {
         
                 sb.append("v ").append(x * xScale);
                 sb.append(" ").append(y * yScale);
-                sb.append(" ").append(((z == -9999) ? seaRepZ : z) ).append("\n");
+                sb.append(" ").append(((z == -9999) ? seaRepZ  : z) * zScale ).append("\n");
                 return sb.toString();
         }
     }
@@ -240,7 +254,7 @@ public class WFObjWriter {
         return ThreadLocalRandom.current().nextDouble(min, max);
     }
     
-    public String PrintVertices () {
+    public String PrintVertices (ArrayList<Vertice> vertices) {
         StringBuilder sbVertices = new StringBuilder("");
           // Create an iterator for the list 
         // using iterator() method 
@@ -277,19 +291,12 @@ public class WFObjWriter {
     a method to create vertices with x,y according to the boundary of ULCorner 
     and LRCorner in separation of pre-defined increments
     the z coordinate comes from srmt, but at the moment just a dummy
- 
     */
       public void CreateVertices () {
-
-      
-          
-        // work out the noofCols and noofRows based on the boundaries and the 
-        // increment step pre-defined
-        
-                
+        // resize z based on the array width and height of z returned from
+        // Dem dem;
         z = new short[this.rectBoxIdx.height][this.rectBoxIdx.width];
-        // assume data from srmt
-
+        // assume data from srmt and copy to the z array;
         gt30w020n90Dem.readDem();
         this.z=(gt30w020n90Dem.z).clone();
         
@@ -309,7 +316,6 @@ public class WFObjWriter {
             
             for (int c = 0; c<this.rectBoxIdx.width; c++){
                     Vertice v = new Vertice(r, c, z[r][c]);
-       //         Vertice v = new Vertice(r, c, ((z[r][c] == -9999) ? this.seaRepZ : z[r][c]));
                 vertices.add(v);
             }
        }
@@ -329,7 +335,28 @@ public class WFObjWriter {
         logger.log(Level.FINE, "result: \n {0}", sb.toString() );
         
 }
-
+      /**
+       * to create the vertices for the base plane and show the number only
+       * but I think I would try to create a cube like class for this
+       * see e.g. http://paulbourke.net/dataformats/obj/
+       * 
+       */
+      public String CreateBaseVertices (Double depth) {
+          
+          ArrayList<Vertice> vertices = new ArrayList<Vertice>();
+          // add four corners, as if it is the map but just four points
+          vertices.add(new Vertice(0, 0, depth));
+          vertices.add(new Vertice(0,this.rectBoxIdx.width, depth));
+          vertices.add(new Vertice(this.rectBoxIdx.height,0 ,depth));
+          vertices.add( new Vertice(rectBoxIdx.height, this.rectBoxIdx.width, depth));
+         
+          StringBuilder sbBaseVertices = new StringBuilder("");
+              sbBaseVertices.append(PrintVertices(vertices));
+         
+          logger.log(Level.INFO, "working on printing base vertices.. {0} ", sbBaseVertices.toString());
+          
+          return sbBaseVertices.toString();
+      }
       
     public void WriteObjFile() {
         String fileName = "munroproject.obj";
@@ -339,11 +366,15 @@ public class WFObjWriter {
         // write comment
         sb.append(title+"\n");
         
-        sb.append(PrintVertices());
+        sb.append(PrintVertices(this.vertices));
         
         // write text for surfaces
         
         sb.append(PrintSurfaces());
+        // add the base plane
+        sb.append("o baseplane\n").append(CreateBaseVertices(0.0));
+        sb.append(CreateBaseVertices(-2.0));
+        sb.append(CreateBaseSurfaces());
         
         logger.log(Level.FINE, "result of .obj: \n {0}", sb.toString() );
         
