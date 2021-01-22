@@ -7,6 +7,7 @@ package munrov2;
 
 import java.awt.Rectangle;
 import java.awt.geom.Rectangle2D;
+import java.awt.image.LookupTable;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -51,6 +52,7 @@ import java.util.logging.Logger;
                 82 130 931
 
  */
+
 public class WFObjWriter {
     private static final Logger logger = Logger.
                 getLogger(WFObjWriter.class.getName());
@@ -90,12 +92,75 @@ public class WFObjWriter {
         // 60 465 929
         // get the scale to translate deg to meter;   0.001 refers to km, 1 refers to m.
         this.measUnit = 0.001;
-        this.xScale = (598+465)/2/this.xyIncStep*this.measUnit;
-        this.yScale = (927+929)/2/this.xyIncStep*this.measUnit;
+        // this.xScale = (598+465)/2/this.xyIncStep*this.measUnit;
+        // this.yScale = (927+929)/2/this.xyIncStep*this.measUnit;
+        int x2E = (convDegToEN(this.adjRect2DBox.getY())[0] 
+                + convDegToEN(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())[0])/2;
+        int y2N = (convDegToEN(this.adjRect2DBox.getY())[1] 
+                + convDegToEN(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())[1])/2;
+        this.xScale =  x2E/this.xyIncStep*this.measUnit;
+        this.yScale = y2N/this.xyIncStep*this.measUnit;
         this.zScale = this.measUnit;
         
         }        
-        /*
+
+  
+/*
+         lookup table for xScale and yScale
+           * Latitude Ground distance (meters)
+        (degrees) E/W N/S
+        --------- ------------------------
+           Equator 928 921
+                10 914 922
+                20 872 923
+                30 804 924
+                40 712 925
+                50 598 927
+                60 465 929
+                70 318 930
+                73 272 930
+                78 193 930
+                82 130 931
+
+    for how to traversing arrays to find the value within the range 
+    see https://books.trinket.io/thinkjava2/chapter7.html
+    
+    */
+    
+  public int[] convDegToEN(double lat){
+    
+
+      int[][] lookUpTble = new int[][]{
+              {0, 928, 921},
+              {10, 914, 922},
+              {20, 872, 923},
+              {30, 804, 924},
+              {40, 712, 925},
+              {50, 598, 927},
+              {60, 465, 929},
+              {70, 318, 930},
+              {73, 272, 930},
+              {78, 193, 930},
+              {82, 130, 931}
+        };
+      
+      int intLat = (int) lat;
+      for (int i=0; i< lookUpTble.length; i++){
+     //     int[] arrayEN = new int[2];
+          if (lookUpTble[i][0] >= intLat) {
+              int[] arrayEN = new int[] {lookUpTble[i][1],lookUpTble[i][2]};
+              return arrayEN;
+              }
+          }
+      
+          return null;
+      }
+      
+    
+      
+
+    
+    /*
         Not used, replaced by calling Dem class and adjust the rectangle
         */
         public void AdjCorners(){
@@ -205,12 +270,25 @@ public class WFObjWriter {
             this.y = y;
             this.z = z;
         }
+         
         
         public String toString(){
                  StringBuilder sb = new StringBuilder("");
         
                 sb.append("v ").append(x * xScale);
                 sb.append(" ").append(y * yScale);
+                sb.append(" ").append(((z == -9999) ? seaRepZ  : z) * zScale ).append("\n");
+                return sb.toString();
+        }
+        
+        public String toStringEN(){
+            int x2E = convDegToEN(this.y)[0];
+            int y2N = convDegToEN(this.y)[1];
+        
+                 StringBuilder sb = new StringBuilder("");
+        
+                sb.append("v ").append(x * x2E);
+                sb.append(" ").append(y * y2N);
                 sb.append(" ").append(((z == -9999) ? seaRepZ  : z) * zScale ).append("\n");
                 return sb.toString();
         }
@@ -264,6 +342,7 @@ public class WFObjWriter {
         // through the list 
 
         while (iter.hasNext()) { 
+            // sbVertices.append(iter.next().toString());
             sbVertices.append(iter.next().toString());
         }
            logger.log(Level.INFO, "printing vertices... ");
@@ -358,9 +437,9 @@ public class WFObjWriter {
           return sbBaseVertices.toString();
       }
       
-    public void WriteObjFile() {
-        String fileName = "munroproject.obj";
-        String title = "#oneTriangle";
+    public void WriteObjFile(String name) {
+        String fileName = name + ".obj";
+        String title = "o " + name;
         
         StringBuilder sb = new StringBuilder("");
         // write comment
@@ -404,14 +483,19 @@ public class WFObjWriter {
     }
              
     public static void main(String args[]){
-
-         Rectangle2D rect2DBox = new Rectangle2D.Double(-7.1, 58.8, 5.5, 4.5);
-      //  Rectangle2D rect2DBox = new Rectangle2D.Double(-3.015, 56.467, 0.5, 0.5);
+        // for scotland X, Y, WIDTH, HEIGHT
+         // Rectangle2D rect2DBox = new Rectangle2D.Double(-7.1, 58.8, 5.5, 4.5);
+         
+        Rectangle2D rect2DBox = new Rectangle2D.Double(
+                113.0+49.0/60, 
+                22.0+35.0/60, 
+                114.0+31.0/60 - (113.0+49.0/60), 
+                22.0+35.0/60 - (22.0+8.0/60));
         WFObjWriter obj = new WFObjWriter(rect2DBox);
 
         obj.CreateVertices();
         obj.CreateSurfaces();
-        obj.WriteObjFile();
+        obj.WriteObjFile("hongkong");
     }    
     
 }
