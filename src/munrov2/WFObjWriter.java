@@ -7,7 +7,6 @@ package munrov2;
 
 import java.awt.Rectangle;
 import java.awt.geom.Rectangle2D;
-import java.awt.image.LookupTable;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -17,7 +16,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- *
  * @author Think
  * attempt to write 3d model in object file to avoid using normals
  * update 30th Dec 2020; branch: creatingSurfaceAndWritingObjFile 
@@ -35,34 +33,15 @@ import java.util.logging.Logger;
      * 
      * the sequence of f 1 2 3 is ordered to follow right hand rule, that is 
      * anticlockwise with the thumb pointing at the normal
-     
-     * Latitude Ground distance (meters)
-        (degrees) E/W N/S
-        --------- ------------------------
-           Equator 928 921
-                10 914 922
-                20 872 923
-                30 804 924
-                40 712 925
-                50 598 927
-                60 465 929
-                70 318 930
-                73 272 930
-                78 193 930
-                82 130 931
-
+  
  */
-
 public class WFObjWriter {
     private static final Logger logger = Logger.
                 getLogger(WFObjWriter.class.getName());
-
     double[][] x, y;
-
     short [][] z;
-
     double xyIncStep, xULCorner, yULCorner, xLRCorner, yLRCorner; // lat 57, lon -5 around fort william
-    double xBoxWidth, yBoxWidth;
+    double xBoxWidth, yBoxWidth, xOffset, yOffset;
 
     int nofRows, nofCols;
     ArrayList<Vertice> vertices = new ArrayList<Vertice>();
@@ -75,7 +54,7 @@ public class WFObjWriter {
     private final double xScale, yScale, zScale;
     private final double measUnit;
 
-    public WFObjWriter (Rectangle2D rect2DBox) {
+    public WFObjWriter (Rectangle2D rect2DBox, double[] offset) {
      
         // create a dem object and retrieve the relevant idx of the box from its calculation
         
@@ -83,30 +62,34 @@ public class WFObjWriter {
         this.rectBoxIdx = gt30w020n90Dem.rectBoxIdx;
         this.xyIncStep = gt30w020n90Dem.xDim;  // should be 30/3600 deg between two idx
         this.adjRect2DBox = gt30w020n90Dem.adjRect2DBox;
+        this.xOffset = offset[0];
+        this.yOffset = offset[1];
         logger.setLevel(Level.INFO);
         this.seaRepZ = 0;   // sea was represented by usgs as -9999.  changed to a new value here.
         //   xyIncStep = 30.0/3600;  // need to use 30.0 otherwise the division would be treated as int and as result xyIncStep become zero.
         // ground distance for 30-arc seconds         
-        //    e/w  n/s
-        // 50 598 927
-        // 60 465 929
         // get the scale to translate deg to meter;   0.001 refers to km, 1 refers to m.
         this.measUnit = 0.001;
-        // this.xScale = (598+465)/2/this.xyIncStep*this.measUnit;
-        // this.yScale = (927+929)/2/this.xyIncStep*this.measUnit;
+        // x2E and y2N are the average of the conversion factor from arc degree to distance in meter
+        // the conversion factor is found from the table given by the usgs manual
+        //
         int x2E = (convDegToEN(this.adjRect2DBox.getY())[0] 
                 + convDegToEN(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())[0])/2;
         int y2N = (convDegToEN(this.adjRect2DBox.getY())[1] 
                 + convDegToEN(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())[1])/2;
-        this.xScale =  x2E/this.xyIncStep*this.measUnit;
-        this.yScale = y2N/this.xyIncStep*this.measUnit;
-        this.zScale = this.measUnit;
+        this.xScale =   x2E*this.measUnit;
+        this.yScale =   y2N*this.measUnit;
+        this.zScale =   this.measUnit;
+        logger.log(Level.INFO, "xScale {0}, yScale {1}, zScale {2};", new Object[]{this.xScale, 
+            this.yScale, this.zScale});
         
         }        
 
   
 /*
          lookup table for xScale and yScale
+         note that ground distance is in unit for each 30-arc second
+         or 30/3600 degress
            * Latitude Ground distance (meters)
         (degrees) E/W N/S
         --------- ------------------------
@@ -143,12 +126,20 @@ public class WFObjWriter {
               {78, 193, 930},
               {82, 130, 931}
         };
-      
-      int intLat = (int) lat;
+      // apply -ve latitude value for southern hemisphere assuming having same profile as 
+      // north
+      int intLat = (int) Math.abs(lat);  
       for (int i=0; i< lookUpTble.length; i++){
      //     int[] arrayEN = new int[2];
-          if (lookUpTble[i][0] >= intLat) {
-              int[] arrayEN = new int[] {lookUpTble[i][1],lookUpTble[i][2]};
+          int thisLat = lookUpTble[i][0];
+          if (thisLat >= intLat) {
+          int prevLat =lookUpTble[i-1][0];
+              float prorata = (float) (thisLat - intLat)/(thisLat - prevLat);
+              int[] arrayEN = new int[] {
+                  Math.round((lookUpTble[i][1] * (1- prorata) + lookUpTble[i-1][1] * prorata)*120),
+                  Math.round((lookUpTble[i][2] * (1- prorata) + lookUpTble[i-1][2] * prorata)*120)
+              };
+              logger.log(Level.INFO, "arrayEN for lat {0} is [{1}, {2}]", new Object[]{lat, arrayEN[0], arrayEN[1]});
               return arrayEN;
               }
           }
@@ -156,9 +147,6 @@ public class WFObjWriter {
           return null;
       }
       
-    
-      
-
     
     /*
         Not used, replaced by calling Dem class and adjust the rectangle
@@ -275,8 +263,8 @@ public class WFObjWriter {
         public String toString(){
                  StringBuilder sb = new StringBuilder("");
         
-                sb.append("v ").append(x * xScale);
-                sb.append(" ").append(y * yScale);
+                sb.append("v ").append((x - xOffset) * xScale);
+                sb.append(" ").append((y - yOffset) * yScale);
                 sb.append(" ").append(((z == -9999) ? seaRepZ  : z) * zScale ).append("\n");
                 return sb.toString();
         }
@@ -485,13 +473,16 @@ public class WFObjWriter {
     public static void main(String args[]){
         // for scotland X, Y, WIDTH, HEIGHT
          // Rectangle2D rect2DBox = new Rectangle2D.Double(-7.1, 58.8, 5.5, 4.5);
-         
+         // define the new origin to offset array.  From this lat and long 
+         // all EN from vertice.toString() will explorate outwards.
+         // For UK 
+         double[] offset = new double[]{113,22};  
         Rectangle2D rect2DBox = new Rectangle2D.Double(
                 113.0+49.0/60, 
                 22.0+35.0/60, 
                 114.0+31.0/60 - (113.0+49.0/60), 
                 22.0+35.0/60 - (22.0+8.0/60));
-        WFObjWriter obj = new WFObjWriter(rect2DBox);
+        WFObjWriter obj = new WFObjWriter(rect2DBox, offset);
 
         obj.CreateVertices();
         obj.CreateSurfaces();
