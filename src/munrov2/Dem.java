@@ -273,7 +273,7 @@ public class Dem {
     public static void main(String args[]){
         
         // get directory where source data is    
-        UserProperties pop = new UserProperties();
+        UserProperties pop = new UserProperties("munroprojecthk");
         String sDir = pop.getProperties("my.dear.home");
         String FileDir=sDir + "\\Bulk Order Scotlad GMTED2010 30Arc SECAND GTOPO30 Geotiff\\Dem\\GTOPO30";
         String FileNamePt1 = "gt30w020n90";

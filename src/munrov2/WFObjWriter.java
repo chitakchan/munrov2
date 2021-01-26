@@ -7,10 +7,12 @@ package munrov2;
 
 import java.awt.Rectangle;
 import java.awt.geom.Rectangle2D;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Properties;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -53,23 +55,62 @@ public class WFObjWriter {
     public final int seaRepZ;
     private final double xScale, yScale, zScale;
     private final double measUnit;
+    private Properties boxProp;
+    private double xFalseO;
+    private double yFalseO;
+    private double xTrueO;
+    private double yTrueO;
+    
+    private double[] enOffset = new double[2];
 
-    public WFObjWriter (Rectangle2D rect2DBox, double[] offset) {
-     
-        // create a dem object and retrieve the relevant idx of the box from its calculation
-        
-        this.gt30w020n90Dem = new Dem(rect2DBox); 
-        this.rectBoxIdx = gt30w020n90Dem.rectBoxIdx;
-        this.xyIncStep = gt30w020n90Dem.xDim;  // should be 30/3600 deg between two idx
-        this.adjRect2DBox = gt30w020n90Dem.adjRect2DBox;
-        this.xOffset = offset[0];
-        this.yOffset = offset[1];
-        logger.setLevel(Level.INFO);
-        this.seaRepZ = 0;   // sea was represented by usgs as -9999.  changed to a new value here.
+
+    /**
+     * this constructor with properties as input allow keep individual region to 
+     * provid all necessary parameters in a file 
+     * @param boxProp 
+     */
+    private WFObjWriter(Properties boxProp) {
+      
+        this.boxProp = boxProp;
+                
+        Rectangle2D rect2DBox = new Rectangle2D.Double(
+        Double.parseDouble(boxProp.getProperty("ULXMAP")),
+        Double.parseDouble(boxProp.getProperty("ULYMAP")),
+        Double.parseDouble(boxProp.getProperty("WIDTH")),
+        Double.parseDouble(boxProp.getProperty("HEIGHT"))
+        );
+        this.xOffset = Double.parseDouble(boxProp.getProperty("XTRUEO","0.0"));
+        this.yOffset = Double.parseDouble(boxProp.getProperty("YTRUEO","0.0"));
+        // this.seaRepZ = 0;   
+        this.seaRepZ = Integer.parseInt(boxProp.getProperty("SEAREPZ","0"));
+        // sea was represented by usgs as -9999.  changed to a new value here.
         //   xyIncStep = 30.0/3600;  // need to use 30.0 otherwise the division would be treated as int and as result xyIncStep become zero.
         // ground distance for 30-arc seconds         
         // get the scale to translate deg to meter;   0.001 refers to km, 1 refers to m.
-        this.measUnit = 0.001;
+        this.measUnit = Double.parseDouble(boxProp.getProperty("DISTSCALE","0.001"));
+        
+        this.xTrueO = Double.parseDouble(boxProp.getProperty("XTRUEO","0.0"));
+        this.yTrueO = Double.parseDouble(boxProp.getProperty("YTRUEO","0.0"));
+        
+        this.xFalseO = Double.parseDouble(boxProp.getProperty("XFALSEO","0.0"));
+        this.yFalseO = Double.parseDouble(boxProp.getProperty("YFALSEO","0.0"));
+        
+        // enOffset to translate e, n in false origin to avoid negative numbers.            
+        this.enOffset[0] = (xTrueO * convDegToEN(yTrueO)[0] - 
+                xFalseO * convDegToEN(yFalseO)[0]) * this.measUnit;
+        this.enOffset[1] = (yTrueO * convDegToEN(yTrueO)[1] - 
+                yFalseO * convDegToEN(yFalseO)[1]) * this.measUnit;;
+        
+        
+        // create a dem object and retrieve the relevant idx of the box from its calculation
+         
+        this.gt30w020n90Dem = new Dem(rect2DBox, 
+                boxProp.getProperty("Gtopo30.dem.dir"), 
+                boxProp.getProperty("default.demFileNamePt1")); 
+        this.rectBoxIdx = gt30w020n90Dem.rectBoxIdx;
+        this.xyIncStep = gt30w020n90Dem.xDim;  // should be 30/3600 deg between two idx
+        this.adjRect2DBox = gt30w020n90Dem.adjRect2DBox;
+        logger.setLevel(Level.INFO);
         // x2E and y2N are the average of the conversion factor from arc degree to distance in meter
         // the conversion factor is found from the table given by the usgs manual
         //
@@ -82,8 +123,10 @@ public class WFObjWriter {
         this.zScale =   this.measUnit;
         logger.log(Level.INFO, "xScale {0}, yScale {1}, zScale {2};", new Object[]{this.xScale, 
             this.yScale, this.zScale});
+       
         
-        }        
+        }
+      
 
   
 /*
@@ -111,8 +154,7 @@ public class WFObjWriter {
     */
     
   public int[] convDegToEN(double lat){
-    
-
+  
       int[][] lookUpTble = new int[][]{
               {0, 928, 921},
               {10, 914, 922},
@@ -263,23 +305,12 @@ public class WFObjWriter {
         public String toString(){
                  StringBuilder sb = new StringBuilder("");
         
-                sb.append("v ").append((x - xOffset) * xScale);
-                sb.append(" ").append((y - yOffset) * yScale);
+                sb.append("v ").append((x - xOffset) * xScale + enOffset[0]);
+                sb.append(" ").append((y - yOffset) * yScale + enOffset[1]);
                 sb.append(" ").append(((z == -9999) ? seaRepZ  : z) * zScale ).append("\n");
                 return sb.toString();
         }
-        
-        public String toStringEN(){
-            int x2E = convDegToEN(this.y)[0];
-            int y2N = convDegToEN(this.y)[1];
-        
-                 StringBuilder sb = new StringBuilder("");
-        
-                sb.append("v ").append(x * x2E);
-                sb.append(" ").append(y * y2N);
-                sb.append(" ").append(((z == -9999) ? seaRepZ  : z) * zScale ).append("\n");
-                return sb.toString();
-        }
+   
     }
      /**
      * not used
@@ -424,10 +455,11 @@ public class WFObjWriter {
           
           return sbBaseVertices.toString();
       }
+    
       
-    public void WriteObjFile(String name) {
-        String fileName = name + ".obj";
-        String title = "o " + name;
+    public void WriteObjFile() {
+        String fileName = this.boxProp.getProperty("TITLE") + ".obj";
+        String title = "o " + fileName;
         
         StringBuilder sb = new StringBuilder("");
         // write comment
@@ -469,24 +501,34 @@ public class WFObjWriter {
             Logger.getLogger(WFObjWriter.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
-             
-    public static void main(String args[]){
+         
+    
+     public static void main(String args[]){
         // for scotland X, Y, WIDTH, HEIGHT
          // Rectangle2D rect2DBox = new Rectangle2D.Double(-7.1, 58.8, 5.5, 4.5);
          // define the new origin to offset array.  From this lat and long 
          // all EN from vertice.toString() will explorate outwards.
          // For UK 
-         double[] offset = new double[]{113,22};  
-        Rectangle2D rect2DBox = new Rectangle2D.Double(
-                113.0+49.0/60, 
-                22.0+35.0/60, 
-                114.0+31.0/60 - (113.0+49.0/60), 
-                22.0+35.0/60 - (22.0+8.0/60));
-        WFObjWriter obj = new WFObjWriter(rect2DBox, offset);
-
+         
+         // read parameters from local file
+         // all local parameters are saved in the directory as defined in 
+         // the UserProperties
+         String boxName = "scotland";
+         UserProperties prop = new UserProperties();
+         
+         Properties boxProp = new Properties();
+        try {
+            boxProp.load(new FileInputStream(prop.getProperties("my.dear.home")+"\\"+boxName+".hdr"));
+            
+        } catch (IOException ex) {
+            Logger.getLogger(WFObjWriter.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    
+      
+        WFObjWriter obj = new WFObjWriter(boxProp);
         obj.CreateVertices();
         obj.CreateSurfaces();
-        obj.WriteObjFile("hongkong");
-    }    
+        obj.WriteObjFile();
+    }   
     
 }

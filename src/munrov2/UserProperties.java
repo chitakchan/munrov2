@@ -27,13 +27,17 @@ public final class UserProperties {
      private static final Logger logger = Logger.getLogger(UserProperties.class.getName());
      Properties pro;
      String sDir, sTestDir;
-     String sPropertyFileName = "munroproject.properties";
+     String sPropertyFileName;
      
     public UserProperties() {
-        pro = new Properties();
+        this("munroproject.properties");
+    }       
+
+    public UserProperties(String propertiesFileName) {
         
+        pro = new Properties();
        
-        sPropertyFileName = System.getProperty("user.home") + "\\"+ sPropertyFileName;
+        this.sPropertyFileName = System.getProperty("user.home") + "\\"+ propertiesFileName;
         logger.log(Level.INFO, "attempting to getting property file from user.home.  {0}", sPropertyFileName);
          try {
              // FileInputStream in = new FileInputStream(sPropertyFileName);
@@ -42,10 +46,37 @@ public final class UserProperties {
             // Exceptions.printStackTrace(ex);
              logger.log(Level.SEVERE, "IOException {0}", sPropertyFileName );
          }
-   }       
+        
+    }
 
 public String getProperties(String fieldName) {
     return this.pro.getProperty(fieldName);
+}
+
+
+/**
+ * Given a title of the region it had the .hdr, say hongkong.hdr scotland.hdr
+ * under the user home directory,  from the hdr file the parameters to run the WFObjWriter class
+ * is retrieved and pass to the class constructor
+ * 26th Jan 2021
+ */
+public Properties getPropFromUserHome(String titleRegion){
+     pro = new Properties();
+       
+        
+        logger.log(Level.INFO, "attempting to getting property file from user.home.  {0}", sPropertyFileName);
+         try {
+             // FileInputStream in = new FileInputStream(sPropertyFileName);
+             pro.load(new FileInputStream(this.sPropertyFileName));
+             
+             return pro;
+             
+         } catch (IOException ex) {
+            // Exceptions.printStackTrace(ex);
+             logger.log(Level.SEVERE, "IOException {0}", this.sPropertyFileName );
+         }
+        
+return null;    
 }
     
 }
