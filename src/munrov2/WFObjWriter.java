@@ -49,7 +49,7 @@ public class WFObjWriter {
     ArrayList<Vertice> vertices = new ArrayList<Vertice>();
     ArrayList<TriFace> triFaces = new ArrayList<TriFace>();
 
-    Dem gt30w020n90Dem;
+    Dem dem;
     Rectangle rectBoxIdx = null;
     Rectangle2D adjRect2DBox;
     public final int seaRepZ;
@@ -104,12 +104,12 @@ public class WFObjWriter {
         
         // create a dem object and retrieve the relevant idx of the box from its calculation
          
-        this.gt30w020n90Dem = new Dem(rect2DBox, 
+        this.dem = new Dem(rect2DBox, 
                 boxProp.getProperty("Gtopo30.dem.dir"), 
                 boxProp.getProperty("default.demFileNamePt1")); 
-        this.rectBoxIdx = gt30w020n90Dem.rectBoxIdx;
-        this.xyIncStep = gt30w020n90Dem.xDim;  // should be 30/3600 deg between two idx
-        this.adjRect2DBox = gt30w020n90Dem.adjRect2DBox;
+        this.rectBoxIdx = dem.rectBoxIdx;
+        this.xyIncStep = dem.xDim;  // should be 30/3600 deg between two idx
+        this.adjRect2DBox = dem.adjRect2DBox;
         logger.setLevel(Level.INFO);
         // x2E and y2N are the average of the conversion factor from arc degree to distance in meter
         // the conversion factor is found from the table given by the usgs manual
@@ -304,9 +304,21 @@ public class WFObjWriter {
         
         public String toString(){
                  StringBuilder sb = new StringBuilder("");
-        
+        /*
                 sb.append("v ").append((x - xOffset) * xScale + enOffset[0]);
                 sb.append(" ").append((y - yOffset) * yScale + enOffset[1]);
+                 
+        int x2E = (convDegToEN(this.adjRect2DBox.getY())[0] 
+                + convDegToEN(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())[0])/2;
+        int y2N = (convDegToEN(this.adjRect2DBox.getY())[1] 
+                + convDegToEN(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())[1])/2;
+                 
+                 */
+        
+        int x2E = convDegToEN(y)[0];
+        int y2N = convDegToEN(y)[1];
+                sb.append("v ").append((x - xOffset) * x2E * measUnit + enOffset[0]);
+                sb.append(" ").append((y - yOffset) * y2N * measUnit + enOffset[1]);
                 sb.append(" ").append(((z == -9999) ? seaRepZ  : z) * zScale ).append("\n");
                 return sb.toString();
         }
@@ -395,8 +407,8 @@ public class WFObjWriter {
         // Dem dem;
         z = new short[this.rectBoxIdx.height][this.rectBoxIdx.width];
         // assume data from srmt and copy to the z array;
-        gt30w020n90Dem.readDem();
-        this.z=(gt30w020n90Dem.z).clone();
+        dem.readDem();
+        this.z=(dem.z).clone();
         
         /*
         // try change the sea value -9999 to -2 but this don't work
