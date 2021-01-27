@@ -53,20 +53,19 @@ public class WFObjWriter {
     Rectangle rectBoxIdx = null;
     Rectangle2D adjRect2DBox;
     public final int seaRepZ;
-    private final double xScale, yScale, zScale;
+    // private final double xScale, yScale, zScale;
     private final double measUnit;
     private Properties boxProp;
-    private double xFalseO;
-    private double yFalseO;
-    private double xTrueO;
-    private double yTrueO;
-    
-    private double[] enOffset = new double[2];
+    private final double eFalseO;
+    private final double nFalseO;
+    private final double xTrueO;
+    private final double yTrueO;
+    private final double baseDepth;
 
 
     /**
      * this constructor with properties as input allow keep individual region to 
-     * provid all necessary parameters in a file 
+     * provide all necessary parameters in a file 
      * @param boxProp 
      */
     private WFObjWriter(Properties boxProp) {
@@ -79,9 +78,7 @@ public class WFObjWriter {
         Double.parseDouble(boxProp.getProperty("WIDTH")),
         Double.parseDouble(boxProp.getProperty("HEIGHT"))
         );
-        this.xOffset = Double.parseDouble(boxProp.getProperty("XTRUEO","0.0"));
-        this.yOffset = Double.parseDouble(boxProp.getProperty("YTRUEO","0.0"));
-        // this.seaRepZ = 0;   
+
         this.seaRepZ = Integer.parseInt(boxProp.getProperty("SEAREPZ","0"));
         // sea was represented by usgs as -9999.  changed to a new value here.
         //   xyIncStep = 30.0/3600;  // need to use 30.0 otherwise the division would be treated as int and as result xyIncStep become zero.
@@ -91,16 +88,9 @@ public class WFObjWriter {
         
         this.xTrueO = Double.parseDouble(boxProp.getProperty("XTRUEO","0.0"));
         this.yTrueO = Double.parseDouble(boxProp.getProperty("YTRUEO","0.0"));
-        
-        this.xFalseO = Double.parseDouble(boxProp.getProperty("XFALSEO","0.0"));
-        this.yFalseO = Double.parseDouble(boxProp.getProperty("YFALSEO","0.0"));
-        
-        // enOffset to translate e, n in false origin to avoid negative numbers.            
-        this.enOffset[0] = (xTrueO * convDegToEN(yTrueO)[0] - 
-                xFalseO * convDegToEN(yFalseO)[0]) * this.measUnit;
-        this.enOffset[1] = (yTrueO * convDegToEN(yTrueO)[1] - 
-                yFalseO * convDegToEN(yFalseO)[1]) * this.measUnit;;
-        
+        // offset to falso origin:  eFalseOff, nFalse e' = e + eFalseOff; n' = n + nFalseOff
+        this.eFalseO = Double.parseDouble(boxProp.getProperty("EFALSEO","0.0"));
+        this.nFalseO = Double.parseDouble(boxProp.getProperty("NFALSEO","0.0"));
         
         // create a dem object and retrieve the relevant idx of the box from its calculation
          
@@ -110,27 +100,21 @@ public class WFObjWriter {
         this.rectBoxIdx = dem.rectBoxIdx;
         this.xyIncStep = dem.xDim;  // should be 30/3600 deg between two idx
         this.adjRect2DBox = dem.adjRect2DBox;
-        logger.setLevel(Level.INFO);
-        // x2E and y2N are the average of the conversion factor from arc degree to distance in meter
-        // the conversion factor is found from the table given by the usgs manual
-        //
-        int x2E = (convDegToEN(this.adjRect2DBox.getY())[0] 
-                + convDegToEN(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())[0])/2;
-        int y2N = (convDegToEN(this.adjRect2DBox.getY())[1] 
-                + convDegToEN(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())[1])/2;
-        this.xScale =   x2E*this.measUnit;
-        this.yScale =   y2N*this.measUnit;
-        this.zScale =   this.measUnit;
-        logger.log(Level.INFO, "xScale {0}, yScale {1}, zScale {2};", new Object[]{this.xScale, 
-            this.yScale, this.zScale});
-       
         
+        // calculate the depth of the base
+        
+        this.baseDepth = Double.parseDouble(boxProp.getProperty("BASEDEPTH","0.01")) *
+                this.adjRect2DBox.getWidth()*convDegToEN(this.adjRect2DBox.getY())[0];
+        
+        logger.setLevel(Level.INFO);
+ 
         }
       
 
   
-/*
-         lookup table for xScale and yScale
+
+    /**
+     * lookup table for xScale and yScale
          note that ground distance is in unit for each 30-arc second
          or 30/3600 degress
            * Latitude Ground distance (meters)
@@ -150,11 +134,13 @@ public class WFObjWriter {
 
     for how to traversing arrays to find the value within the range 
     see https://books.trinket.io/thinkjava2/chapter7.html
-    
-    */
-    
+     * @param lat
+     * @return would be the ground distance in meter per arc degree
+     */
+        
   public int[] convDegToEN(double lat){
   
+      // this table is the ground distance in meter per 30-arc seconds
       int[][] lookUpTble = new int[][]{
               {0, 928, 921},
               {10, 914, 922},
@@ -170,26 +156,43 @@ public class WFObjWriter {
         };
       // apply -ve latitude value for southern hemisphere assuming having same profile as 
       // north
-      int intLat = (int) Math.abs(lat);  
+      // int intLat = (int) Math.abs(lat);  
+      double intLat = Math.abs(lat);  
       for (int i=0; i< lookUpTble.length; i++){
-     //     int[] arrayEN = new int[2];
+     
           int thisLat = lookUpTble[i][0];
           if (thisLat >= intLat) {
           int prevLat =lookUpTble[i-1][0];
               float prorata = (float) (thisLat - intLat)/(thisLat - prevLat);
               int[] arrayEN = new int[] {
+                  /*
+                  Math.round((lookUpTble[i][1] * (1- prorata) + lookUpTble[i-1][1] * prorata)*120),
+                  Math.round((lookUpTble[i][2] * (1- prorata) + lookUpTble[i-1][2] * prorata)*120)
+                  */
                   Math.round((lookUpTble[i][1] * (1- prorata) + lookUpTble[i-1][1] * prorata)*120),
                   Math.round((lookUpTble[i][2] * (1- prorata) + lookUpTble[i-1][2] * prorata)*120)
               };
-              logger.log(Level.INFO, "arrayEN for lat {0} is [{1}, {2}]", new Object[]{lat, arrayEN[0], arrayEN[1]});
-              return arrayEN;
+              logger.log(Level.FINER, "arrayEN for lat {0} is [{1}, {2}]", new Object[]{lat, arrayEN[0], arrayEN[1]});
+            return arrayEN;
+       
               }
           }
       
           return null;
       }
       
-    
+  /**
+   * to return the vertice and its position from the array vertices
+   * @param r
+   * @param c
+   * @return 
+   */
+    public Vertice getVerticeFromList (int r, int c){
+        int position = r * this.rectBoxIdx.width + c; 
+        
+        return this.vertices.get(position);
+        
+    }
     /*
         Not used, replaced by calling Dem class and adjust the rectangle
         */
@@ -249,6 +252,32 @@ public class WFObjWriter {
         
         return sb.toString();
     }
+
+    /**
+     * print 
+     * @return 
+     */
+    private String PrintSideSurfaces() {
+        /*
+         // public String PrintSurfaces() {
+         StringBuilder sbTriFaces = new StringBuilder("");
+        // Create an iterator for the list 
+        // using iterator() method 
+        Iterator<PolFace> iter  = triFaces.iterator(); 
+  
+        // Displaying the values after iterating 
+        // through the list +
+
+        while (iter.hasNext()) { 
+            sbTriFaces.append(iter.next().toString());
+        }
+            logger.log(Level.INFO, "printing surfaces... ");
+        logger.log(Level.FINE, "result of sbFaces: \n {0}", sbTriFaces.toString() );
+        return sbTriFaces.toString();
+   
+        */
+        return null;
+    }
     
     /**
      * 
@@ -303,24 +332,18 @@ public class WFObjWriter {
          
         
         public String toString(){
-                 StringBuilder sb = new StringBuilder("");
-        /*
-                sb.append("v ").append((x - xOffset) * xScale + enOffset[0]);
-                sb.append(" ").append((y - yOffset) * yScale + enOffset[1]);
-                 
-        int x2E = (convDegToEN(this.adjRect2DBox.getY())[0] 
-                + convDegToEN(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())[0])/2;
-        int y2N = (convDegToEN(this.adjRect2DBox.getY())[1] 
-                + convDegToEN(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())[1])/2;
-                 
-                 */
-        
-        int x2E = convDegToEN(y)[0];
-        int y2N = convDegToEN(y)[1];
-                sb.append("v ").append((x - xOffset) * x2E * measUnit + enOffset[0]);
-                sb.append(" ").append((y - yOffset) * y2N * measUnit + enOffset[1]);
-                sb.append(" ").append(((z == -9999) ? seaRepZ  : z) * zScale ).append("\n");
-                return sb.toString();
+            StringBuilder sb = new StringBuilder("");
+
+           double x2E = convDegToEN(this.y)[0];
+           double y2N = convDegToEN(this.y)[1];
+           double easting = (this.x - xTrueO) * x2E;
+           double northing = (this.y - yTrueO) * y2N;
+           double eastingFalse = easting - eFalseO;
+           double northingFalse = northing - nFalseO;
+           sb.append("v ").append(eastingFalse * measUnit);
+           sb.append(" ").append(northingFalse * measUnit);
+           sb.append(" ").append(((z == -9999) ? seaRepZ  : z) * measUnit ).append("\n");
+           return sb.toString();
         }
    
     }
@@ -456,9 +479,9 @@ public class WFObjWriter {
           ArrayList<Vertice> vertices = new ArrayList<Vertice>();
           // add four corners, as if it is the map but just four points
           vertices.add(new Vertice(0, 0, depth));
-          vertices.add(new Vertice(0,this.rectBoxIdx.width, depth));
-          vertices.add(new Vertice(this.rectBoxIdx.height,0 ,depth));
-          vertices.add( new Vertice(rectBoxIdx.height, this.rectBoxIdx.width, depth));
+          vertices.add(new Vertice(0,this.rectBoxIdx.width-1, depth));
+          vertices.add(new Vertice(this.rectBoxIdx.height-1,0 ,depth));
+          vertices.add( new Vertice(rectBoxIdx.height-1, this.rectBoxIdx.width-1, depth));
          
           StringBuilder sbBaseVertices = new StringBuilder("");
               sbBaseVertices.append(PrintVertices(vertices));
@@ -479,13 +502,27 @@ public class WFObjWriter {
         
         sb.append(PrintVertices(this.vertices));
         
+        sb.append(CreateBaseVertices(-this.baseDepth));
         // write text for surfaces
         
         sb.append(PrintSurfaces());
+        
+        // write text for sides surfaces
+        
+        sb.append(PrintSideFace(0));
+        sb.append(PrintSideFace(1));
+        sb.append(PrintSideFace(2));
+        sb.append(PrintSideFace(3));
+        sb.append(PrintBaseSurface());
+        
+        
         // add the base plane
-        sb.append("o baseplane\n").append(CreateBaseVertices(0.0));
-        sb.append(CreateBaseVertices(-2.0));
+        /*
+        sb.append("o baseplane\n").append(CreateBaseVertices(-this.baseDepth*0.2));
+        sb.append(CreateBaseVertices(-this.baseDepth));
         sb.append(CreateBaseSurfaces());
+        
+        */
         
         logger.log(Level.FINE, "result of .obj: \n {0}", sb.toString() );
         
@@ -513,7 +550,91 @@ public class WFObjWriter {
             Logger.getLogger(WFObjWriter.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
+
+    /**
+     * sideFace to generate the four side
+     */
+    public String PrintSideFace(int cornerPosition) {
+            
+          ArrayList<Integer> sideVertices = new ArrayList<Integer>();
+        // for UL corner(0), c+;  UR(1), r+; LL(2), r-; LR(3), c-
+            int r, c;
+            int startNo = rectBoxIdx.height*rectBoxIdx.width;
+            switch(cornerPosition) {
+                case 0:
+                    // v = getVerticeFromList(0,0);
+                    // add vertices along c+
+                    // r = 0; c = 0;   // start point, check by applying i to the bracket
+                    for (int i=0; i<rectBoxIdx.width; i++){
+                        sideVertices.add( i );
+                    }
+                    // add two vertices at pt 1 then 0
+                        sideVertices.add(startNo + 1);
+                        sideVertices.add(startNo + 0);
+                        
+                    break;
+                case 1:
+                    // r = 0; c = rectBoxIdx.width;
+                     // add vertices along r+
+                    for (int i=0; i<rectBoxIdx.height; i++){
+                        sideVertices.add(i * rectBoxIdx.width + rectBoxIdx.width-1 );
+                    }
+                    // add two vertices at pt 2 then 1
+                        sideVertices.add(startNo + 3);
+                        sideVertices.add(startNo + 1);
+                    
+                    break;
+                    
+                case 2:      // LL(2), r-
+                    // r = rectBoxIdx.height; c = 0;
+                    for (int i=rectBoxIdx.height ; i > 0 ; i--){
+                        sideVertices.add( rectBoxIdx.width * (i-1));
+                    }
+                        sideVertices.add(startNo + 0);
+                        sideVertices.add(startNo + 2);
+                    break;      
+                    
+                case 3:      // LR(3), c-
+                    // r = rectBoxIdx.height; c = rectBoxIdx.width;
+                    for (int i=rectBoxIdx.width; i > 0; i--){
+                        sideVertices.add((rectBoxIdx.height - 1) * rectBoxIdx.width + i -1);
+                    }
+                    // add two vertices at pt 3 then 2
+                        sideVertices.add(startNo + 2);
+                        sideVertices.add(startNo + 3);
+                    break;                    
+                                  
+            }
+        
+            StringBuilder sb = new StringBuilder("");
          
+            Iterator<Integer> iter = sideVertices.iterator();
+  
+            // Displaying the values after iterating 
+            // through the list +
+            sb.append("f ");
+            while (iter.hasNext()) { 
+                sb.append(iter.next().intValue()+1).append(" ");
+            }
+            sb.append("\n");
+            return sb.toString();
+    }
+    
+    /**
+     * print the surface for the base which vertices would be the last
+     * 4 vertices in c then r direction
+     */
+    public String PrintBaseSurface() {
+        int startNo = rectBoxIdx.height*rectBoxIdx.width;
+          
+        StringBuilder sb = new StringBuilder("");
+        sb.append("f ").append(startNo +1);
+        sb.append(" ").append(startNo + 2);
+        sb.append(" ").append(startNo + 4);
+        sb.append(" ").append(startNo + 3);
+        sb.append("\n");
+        return sb.toString();
+    }
     
      public static void main(String args[]){
         // for scotland X, Y, WIDTH, HEIGHT
