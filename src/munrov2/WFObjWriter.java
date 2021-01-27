@@ -646,7 +646,7 @@ public class WFObjWriter {
          // read parameters from local file
          // all local parameters are saved in the directory as defined in 
          // the UserProperties
-         String boxName = "scotland";
+         String boxName = "guangdong";
          UserProperties prop = new UserProperties();
          
          Properties boxProp = new Properties();
