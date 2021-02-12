@@ -10,6 +10,7 @@ import java.awt.geom.Rectangle2D;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import static java.lang.Math.max;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Properties;
@@ -46,13 +47,14 @@ public class WFObjWriter {
     double xBoxWidth, yBoxWidth, xOffset, yOffset;
 
     int nofRows, nofCols;
-    ArrayList<Vertice> vertices = new ArrayList<Vertice>();
-    ArrayList<TriFace> triFaces = new ArrayList<TriFace>();
+    ArrayList<Vertice> vertices = new ArrayList<>();
+    ArrayList<TriFace> triFaces = new ArrayList<>();
 
     Dem dem;
     Rectangle rectBoxIdx = null;
     Rectangle2D adjRect2DBox;
-    public final int seaRepZ;
+//    public final int seaRepZ;
+        public final double seaRepZ;
     // private final double xScale, yScale, zScale;
     private final double measUnit;
     private Properties boxProp;
@@ -61,6 +63,8 @@ public class WFObjWriter {
     private final double xTrueO;
     private final double yTrueO;
     private final double baseDepth;
+    private final double zExagg;
+    private final double zGWSeaLvl;
 
 
     /**
@@ -79,7 +83,8 @@ public class WFObjWriter {
         Double.parseDouble(boxProp.getProperty("HEIGHT"))
         );
 
-        this.seaRepZ = Integer.parseInt(boxProp.getProperty("SEAREPZ","0"));
+        this.seaRepZ = Double.parseDouble(boxProp.getProperty("SEAREPZ","-0"));
+        this.zGWSeaLvl = Double.parseDouble(boxProp.getProperty("ZGWSEALVL","0.0"));
         // sea was represented by usgs as -9999.  changed to a new value here.
         //   xyIncStep = 30.0/3600;  // need to use 30.0 otherwise the division would be treated as int and as result xyIncStep become zero.
         // ground distance for 30-arc seconds         
@@ -91,6 +96,7 @@ public class WFObjWriter {
         // offset to falso origin:  eFalseOff, nFalse e' = e + eFalseOff; n' = n + nFalseOff
         this.eFalseO = Double.parseDouble(boxProp.getProperty("EFALSEO","0.0"));
         this.nFalseO = Double.parseDouble(boxProp.getProperty("NFALSEO","0.0"));
+        this.zExagg = Double.parseDouble(boxProp.getProperty("ZEXAGG","1.0"));
         
         // create a dem object and retrieve the relevant idx of the box from its calculation
          
@@ -102,8 +108,10 @@ public class WFObjWriter {
         this.adjRect2DBox = dem.adjRect2DBox;
         
         // calculate the depth of the base
-        
-        this.baseDepth = Double.parseDouble(boxProp.getProperty("BASEDEPTH","0.01")) *
+        // BASEDEPTH is the thickness of the base in meter calculated from applying a 
+        // percentage (BASEDEPTHPCT) on to the Width, 
+        // this Base depth will then be used to offset the z figure so that the whole model would not have negative z.
+        this.baseDepth = Double.parseDouble(boxProp.getProperty("BASEDEPTHPCT","0.05")) *
                 this.adjRect2DBox.getWidth()*convDegToEN(this.adjRect2DBox.getY())[0];
         
         logger.setLevel(Level.INFO);
@@ -165,10 +173,6 @@ public class WFObjWriter {
           int prevLat =lookUpTble[i-1][0];
               float prorata = (float) (thisLat - intLat)/(thisLat - prevLat);
               int[] arrayEN = new int[] {
-                  /*
-                  Math.round((lookUpTble[i][1] * (1- prorata) + lookUpTble[i-1][1] * prorata)*120),
-                  Math.round((lookUpTble[i][2] * (1- prorata) + lookUpTble[i-1][2] * prorata)*120)
-                  */
                   Math.round((lookUpTble[i][1] * (1- prorata) + lookUpTble[i-1][1] * prorata)*120),
                   Math.round((lookUpTble[i][2] * (1- prorata) + lookUpTble[i-1][2] * prorata)*120)
               };
@@ -189,7 +193,6 @@ public class WFObjWriter {
    */
     public Vertice getVerticeFromList (int r, int c){
         int position = r * this.rectBoxIdx.width + c; 
-        
         return this.vertices.get(position);
         
     }
@@ -241,6 +244,11 @@ public class WFObjWriter {
             }
     }
 
+    /**
+     * create a surfaces of a plane 
+     * not used
+     * @return 
+     */
     private String CreateBaseSurfaces() {
         StringBuilder sb = new StringBuilder("");
         sb.append("f -8 -6 -5 -7").append("\n");
@@ -254,29 +262,51 @@ public class WFObjWriter {
     }
 
     /**
-     * print 
-     * @return 
+     * suggest the parameters given the desirable dimension of the 3D print:
+     * Searepz:  at least 1mm
+     * baseDepthPct:  a multiplier of the width that give a thickness of the base at at least 2mm
+     * zExagg:  a multiplier of the z, which when applying on the max height of 
+     * the landscape would give a height of say 3mm when the width of the plate is 45mm
      */
-    private String PrintSideSurfaces() {
-        /*
-         // public String PrintSurfaces() {
-         StringBuilder sbTriFaces = new StringBuilder("");
-        // Create an iterator for the list 
-        // using iterator() method 
-        Iterator<PolFace> iter  = triFaces.iterator(); 
+    private void ProposedSettings() {
+        
+        // find out the proposed BASEDEPTHPCT
+        double prnWidth = 0.045; // desired width of 3D print in meter unit
+        double prnBaseDepth = 0.002; // desired thickness of the base
+        
+        double basedDepthPct = prnBaseDepth / prnWidth;
+        
+        // find out the proposed ZEXAGG
+
+        double outputModelWidth = this.adjRect2DBox.getWidth()*convDegToEN(this.adjRect2DBox.getY())[0];  // in meter
+                
+        Iterator<Vertice> iter  = vertices.iterator(); 
   
         // Displaying the values after iterating 
-        // through the list +
-
+        // through the list 
+        double maxZ=0; 
         while (iter.hasNext()) { 
-            sbTriFaces.append(iter.next().toString());
+            maxZ = max(iter.next().z, maxZ);
         }
-            logger.log(Level.INFO, "printing surfaces... ");
-        logger.log(Level.FINE, "result of sbFaces: \n {0}", sbTriFaces.toString() );
-        return sbTriFaces.toString();
-   
-        */
-        return null;
+        
+        double scaledMaxZ = maxZ * prnWidth / outputModelWidth;   // when printed in 3D with prnWidth the maxZ will be scale down at the same rate to the print 
+        
+        double prnMaxZ = 0.004;   // desired max z height of the 3D print
+        double zExagge = prnMaxZ / scaledMaxZ;
+        
+        logger.log(Level.INFO, "prnWidth: {0}, prnBaseDepth: {1}, basedDepthPct: {2}\n", 
+                new Object[]{prnWidth, prnBaseDepth, basedDepthPct});
+  
+        logger.log(Level.INFO, "maxZ: {0}, prnMaxZ: {1}, zExagg: {2}\n", 
+                new Object[]{maxZ, prnMaxZ, zExagge});
+  
+        // calculate the scale when doing the 3D print
+        double scale = prnWidth/(outputModelWidth*this.measUnit);
+        logger.log(Level.INFO, "use Scale {0} to achieve a prnWidth of: {1} for width {2}\n", 
+                new Object[]{scale, prnWidth, outputModelWidth * this.measUnit});
+  
+        
+        
     }
     
     /**
@@ -342,7 +372,22 @@ public class WFObjWriter {
            double northingFalse = northing - nFalseO;
            sb.append("v ").append(eastingFalse * measUnit);
            sb.append(" ").append(northingFalse * measUnit);
-           sb.append(" ").append(((z == -9999) ? seaRepZ  : z) * measUnit ).append("\n");
+           // Z of the geographical model should be pushed upwards by the baseDepth to 
+           // avoid negative z,
+           // because it is an offset and is dependent on width of the model
+           // so baseDepth should be outside the calculation of z itself
+           // sb.append(" ").append((((z == -9999) ? seaRepZ  : z * zExagg) + baseDepth)* measUnit  ).append("\n");
+           // zGWSeaLvl is the sea level rise due to global warming.  land below this level 
+           // would be submerged and represented as 80% of the seaDepth (should be in negative figure in the hdr file
+           
+           sb.append(" ").append((((z == -9999) ? 
+                   seaRepZ  : 
+                   ((z > zGWSeaLvl) ? z * zExagg : seaRepZ * 1.5)  // when z less than zGWSeaLvl it go deeper then sea level
+                        ) 
+                    + baseDepth)* measUnit)
+                   .append("\n");
+            
+//            sb.append(" ").append((((z == -9999) ? seaRepZ : z ))).append("\n");
            return sb.toString();
         }
    
@@ -502,7 +547,8 @@ public class WFObjWriter {
         
         sb.append(PrintVertices(this.vertices));
         
-        sb.append(CreateBaseVertices(-this.baseDepth));
+        sb.append(CreateBaseVertices(-this.baseDepth/zExagg));  
+        // need to reset the zExagg as it will be applied later on the whole object including geographic model
         // write text for surfaces
         
         sb.append(PrintSurfaces());
@@ -553,57 +599,63 @@ public class WFObjWriter {
 
     /**
      * sideFace to generate the four side
+     * note that the sequence of four base vertices (0 UL, 1 UR, 2 LL, 3 LR is 
+     * is decide by the toString() method in createBaseVertice();
+     * use right hand rule when considering the sequence of the vertices added to the sideVertices
+     * @param cornerPosition
+     * @return the surface of the four sides in obj format (f v1 v2....)
      */
     public String PrintSideFace(int cornerPosition) {
-            
-          ArrayList<Integer> sideVertices = new ArrayList<Integer>();
-        // for UL corner(0), c+;  UR(1), r+; LL(2), r-; LR(3), c-
-            int r, c;
-            int startNo = rectBoxIdx.height*rectBoxIdx.width;
+
+        ArrayList<Integer> sideVertices = new ArrayList<>();
+        int startNo = rectBoxIdx.height*rectBoxIdx.width;
             switch(cornerPosition) {
                 case 0:
-                    // v = getVerticeFromList(0,0);
-                    // add vertices along c+
-                    // r = 0; c = 0;   // start point, check by applying i to the bracket
-                    for (int i=0; i<rectBoxIdx.width; i++){
-                        sideVertices.add( i );
+                    // North side rectangle start from UL, 
+                    // find vertices eastward (c+) towards UR 
+                    // at UL corner, r = 0; c = 0;
+                    for (int c=0; c<rectBoxIdx.width; c++){
+                        sideVertices.add( c );
                     }
-                    // add two vertices at pt 1 then 0
+                    // return the loop via base vertices 1 then 0
                         sideVertices.add(startNo + 1);
                         sideVertices.add(startNo + 0);
                         
                     break;
                 case 1:
-                    // r = 0; c = rectBoxIdx.width;
-                     // add vertices along r+
-                    for (int i=0; i<rectBoxIdx.height; i++){
-                        sideVertices.add(i * rectBoxIdx.width + rectBoxIdx.width-1 );
+                    // East side rectangle start from UR, 
+                    // find vertices southward (r+) towards LR 
+                    // at UR corner, r = 0; c = rectBoxIdx.width;
+                    for (int r=0; r<rectBoxIdx.height; r++){
+                        sideVertices.add(r * rectBoxIdx.width + rectBoxIdx.width-1 );
                     }
-                    // add two vertices at pt 2 then 1
+                    // return the loop via base vertices 3 then 1
                         sideVertices.add(startNo + 3);
                         sideVertices.add(startNo + 1);
-                    
                     break;
                     
-                case 2:      // LL(2), r-
-                    // r = rectBoxIdx.height; c = 0;
-                    for (int i=rectBoxIdx.height ; i > 0 ; i--){
-                        sideVertices.add( rectBoxIdx.width * (i-1));
+                case 2:      
+                    // left side rectangle start from LL(vertice sequence 2), 
+                    // find vertices northward (r-) towards UL (vertice sequence 0)
+                    // at LL, r = rectBoxIdx.height; c = 0;
+                    for (int r=rectBoxIdx.height ; r > 0 ; r--){
+                        sideVertices.add( rectBoxIdx.width * (r-1));
                     }
                         sideVertices.add(startNo + 0);
                         sideVertices.add(startNo + 2);
                     break;      
                     
-                case 3:      // LR(3), c-
-                    // r = rectBoxIdx.height; c = rectBoxIdx.width;
-                    for (int i=rectBoxIdx.width; i > 0; i--){
-                        sideVertices.add((rectBoxIdx.height - 1) * rectBoxIdx.width + i -1);
+                case 3:
+                    // bottom side rectangle start from LR(vertice sequence 3), 
+                    // find vertices westward (c-) towards LL (vertice sequence 2)
+                    // at LR corner, r = rectBoxIdx.height; c = rectBoxIdx.width;
+                    for (int c=rectBoxIdx.width; c > 0; c--){
+                        sideVertices.add((rectBoxIdx.height - 1) * rectBoxIdx.width + c -1);
                     }
-                    // add two vertices at pt 3 then 2
+                    // continue to base vertices at pt 2 then 3 
                         sideVertices.add(startNo + 2);
                         sideVertices.add(startNo + 3);
                     break;                    
-                                  
             }
         
             StringBuilder sb = new StringBuilder("");
@@ -614,15 +666,16 @@ public class WFObjWriter {
             // through the list +
             sb.append("f ");
             while (iter.hasNext()) { 
-                sb.append(iter.next().intValue()+1).append(" ");
+                sb.append(iter.next()+1).append(" ");
             }
             sb.append("\n");
             return sb.toString();
     }
     
     /**
-     * print the surface for the base which vertices would be the last
-     * 4 vertices in c then r direction
+     * print the surface for the bottome of the base which vertices would be the last
+     * 4 vertices in UL->UR->LL->LR sequence as dictated by createBaseVertices()
+     * @return text of surface in obj format (ie. f v1 v2 ...) with RHS, normal outwards
      */
     public String PrintBaseSurface() {
         int startNo = rectBoxIdx.height*rectBoxIdx.width;
@@ -646,7 +699,7 @@ public class WFObjWriter {
          // read parameters from local file
          // all local parameters are saved in the directory as defined in 
          // the UserProperties
-         String boxName = "guangdong";
+         String boxName = "scotlandV1";
          UserProperties prop = new UserProperties();
          
          Properties boxProp = new Properties();
@@ -657,11 +710,12 @@ public class WFObjWriter {
             Logger.getLogger(WFObjWriter.class.getName()).log(Level.SEVERE, null, ex);
         }
     
-      
         WFObjWriter obj = new WFObjWriter(boxProp);
         obj.CreateVertices();
         obj.CreateSurfaces();
         obj.WriteObjFile();
+        obj.ProposedSettings();
+        
     }   
     
 }
