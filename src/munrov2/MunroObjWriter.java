@@ -53,6 +53,18 @@ public class MunroObjWriter {
         return sb.toString();
     }
     
+    public String toStringObj(){
+        StringBuilder sb = new StringBuilder("");
+        sb.append("o ").append(prop.getProperty("default.munrosDetailsFileName")).append("\n");
+        this.munroList.forEach( e -> 
+          sb.append("v").append(" ")
+            .append(e.lon).append(" ")
+            .append(e.lat).append(" ")
+             .append(e.ht).append("\n")
+                        );
+        return sb.toString();
+    }
+    
     
     
     public static void main(String[] args) {
@@ -73,6 +85,7 @@ public class MunroObjWriter {
         
         MunroObjWriter munro = new MunroObjWriter(boxProp);
         LOG.log(Level.INFO, "list of munros: \n {0}", munro.toString());
+        LOG.log(Level.INFO, "list of munros in object format: \n {0}", munro.toStringObj());
         
     }
 
