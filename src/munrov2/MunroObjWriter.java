@@ -15,6 +15,9 @@ import java.util.ArrayList;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import model.MyVertice;
+import model.SquarePlane;
+import munrov2.WFObjWriter.Vertice;
 
 /**
  *
@@ -37,6 +40,7 @@ public class MunroObjWriter {
         // this.munroList.addAll(CSVReader(fileName));
         this.munroList = CSVReader(fileName);
         // read x, y from csv file
+        // createVertices();
         
         
         
@@ -64,9 +68,35 @@ public class MunroObjWriter {
                         );
         return sb.toString();
     }
+    // simply vertice, no individual name
+        public String toStringObjEN(){
+        StringBuilder sb = new StringBuilder("");
+        sb.append("o ").append(prop.getProperty("default.munrosDetailsFileName")).append("\n");
+        this.munroList.forEach( e -> 
+                sb.append(e.toString())
+                        );
+        return sb.toString();
+    }
+        
+        public String toStringObjENSqrPlane(){
+        StringBuilder sb = new StringBuilder("");
+        sb.append("o ").append(prop.getProperty("default.munrosDetailsFileName")).append("\n");
+        this.munroList.forEach( e -> 
+                sb.append(e.toStringSqrPlane()).append("\n")
+                        );
+        return sb.toString();
+    }
     
-    
-    
+    public String toStringObjENDot(){
+        StringBuilder sb = new StringBuilder("");
+        sb.append("o ").append(prop.getProperty("default.munrosDetailsFileName")).append("\n");
+        this.munroList.forEach( e -> 
+                sb.append(e.toStringDot(e.name))
+                // sb.append(e.toStringDot(null))
+                        );
+        return sb.toString();
+    }
+        
     public static void main(String[] args) {
         
         String boxName = "bottomMunrosV1";
@@ -83,10 +113,13 @@ public class MunroObjWriter {
             Logger.getLogger(WFObjWriter.class.getName()).log(Level.SEVERE, null, ex);
         }
         
-        MunroObjWriter munro = new MunroObjWriter(boxProp);
-        LOG.log(Level.INFO, "list of munros: \n {0}", munro.toString());
-        LOG.log(Level.INFO, "list of munros in object format: \n {0}", munro.toStringObj());
-        
+        MunroObjWriter munroObjWriter = new MunroObjWriter(boxProp);
+        LOG.log(Level.INFO, "list of munros: \n {0}", munroObjWriter.toString());
+        LOG.log(Level.INFO, "list of munros in object format: \n {0}", munroObjWriter.toStringObj());
+        LOG.log(Level.INFO, "list of munros EN in object format: \n {0}", munroObjWriter.toStringObjEN());
+        LOG.log(Level.INFO, "list of munros EN in object format, with square plane: \n {0}", munroObjWriter.toStringObjENSqrPlane());
+        LOG.log(Level.INFO, "list of munros EN in object format, with dots: \n {0}", 
+                munroObjWriter.toStringObjENDot());
     }
 
     /**
@@ -140,23 +173,55 @@ public class MunroObjWriter {
         return munroList;
     }
 
+
     class Munro {
 
         private final String name;
         private final double lon;
         private final double lat;
         private final double ht;
+        public MyVertice vertice;
         
         public Munro(String name, double ht, double lon, double lat) {
             this.name = name;
             this.ht = ht;
             this.lon = lon;
             this.lat = lat;
+            this.vertice = new MyVertice(lon, lat, ht);
+            
+        }
+        
+        public String toString(){
+                   
+            StringBuilder sb = new StringBuilder("");
+            sb.append(this.vertice.toString(prop));
+            
+            return sb.toString();
+        }
+        
+        
+        public String toStringSqrPlane() {
+            
+            double planeWidth = Double.parseDouble(prop.getProperty("SQRPLANEWIDTH","100.0"));
+            double planeHeight = Double.parseDouble(prop.getProperty("SQRPLANEHT","100.0"));
+            SquarePlane sqrPlane = new SquarePlane(vertice, planeWidth, planeHeight);
+            
+            StringBuilder sb = new StringBuilder("");
+            sb.append("o ").append(name).append("\n");
+            sb.append(sqrPlane.toString(prop));
+            
+            return sb.toString();
+        
+        }
+
+        public String toStringDot(String name) {
+           StringBuilder sb = new StringBuilder("");
+           if (name != null) {sb.append("o ").append(name).append("\n");} 
+           sb.append(this.vertice.toString(prop));
+           sb.append("f -1").append("\n");
+ 
+            return sb.toString();
         }
     }
-    
-    
-    
-            
     
 }

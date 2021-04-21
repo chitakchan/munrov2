@@ -10,7 +10,8 @@ import java.awt.geom.Rectangle2D;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import static java.lang.Math.max;
+import static java.lang.Double.max;
+import static java.lang.Double.min;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Properties;
@@ -65,6 +66,9 @@ public class WFObjWriter {
     private final double baseDepth;
     private final double zExagg;
     private final double zGWSeaLvl;
+    private final double zFixedElv;
+    private final double zExaggForGW;
+    private final int offsetZBaseDepthFlag;
 
 
     /**
@@ -85,6 +89,7 @@ public class WFObjWriter {
 
         this.seaRepZ = Double.parseDouble(boxProp.getProperty("SEAREPZ","-0"));
         this.zGWSeaLvl = Double.parseDouble(boxProp.getProperty("ZGWSEALVL","0.0"));
+        this.zExaggForGW = Double.parseDouble(boxProp.getProperty("ZEXAGGFORGW","1.0"));
         // sea was represented by usgs as -9999.  changed to a new value here.
         //   xyIncStep = 30.0/3600;  // need to use 30.0 otherwise the division would be treated as int and as result xyIncStep become zero.
         // ground distance for 30-arc seconds         
@@ -97,12 +102,13 @@ public class WFObjWriter {
         this.eFalseO = Double.parseDouble(boxProp.getProperty("EFALSEO","0.0"));
         this.nFalseO = Double.parseDouble(boxProp.getProperty("NFALSEO","0.0"));
         this.zExagg = Double.parseDouble(boxProp.getProperty("ZEXAGG","1.0"));
+        this.zFixedElv = Double.parseDouble(boxProp.getProperty("ZFIXEDELV", "-9999.9"));
         
         // create a dem object and retrieve the relevant idx of the box from its calculation
          
         this.dem = new Dem(rect2DBox, 
                 boxProp.getProperty("Gtopo30.dem.dir"), 
-                boxProp.getProperty("default.demFileNamePt1")); 
+                boxProp.getProperty("default.demFileNamePt1"));            
         this.rectBoxIdx = dem.rectBoxIdx;
         this.xyIncStep = dem.xDim;  // should be 30/3600 deg between two idx
         this.adjRect2DBox = dem.adjRect2DBox;
@@ -113,6 +119,7 @@ public class WFObjWriter {
         // this Base depth will then be used to offset the z figure so that the whole model would not have negative z.
         this.baseDepth = Double.parseDouble(boxProp.getProperty("BASEDEPTHPCT","0.05")) *
                 this.adjRect2DBox.getWidth()*convDegToEN(this.adjRect2DBox.getY())[0];
+        this.offsetZBaseDepthFlag = Integer.parseInt(boxProp.getProperty("OFFSETZBASEDEPTHFLAG","0")); 
         
         logger.setLevel(Level.INFO);
  
@@ -263,47 +270,86 @@ public class WFObjWriter {
 
     /**
      * suggest the parameters given the desirable dimension of the 3D print:
-     * Searepz:  at least 1mm
-     * baseDepthPct:  a multiplier of the width that give a thickness of the base at at least 2mm
+     * Searepz:  at least 3mm of 3D print
+     * * baseDepthPct:  at least 1.5mm 3D print 
      * zExagg:  a multiplier of the z, which when applying on the max height of 
      * the landscape would give a height of say 3mm when the width of the plate is 45mm
      */
     private void ProposedSettings() {
         
         // find out the proposed BASEDEPTHPCT
-        double prnWidth = 0.045; // desired width of 3D print in meter unit
-        double prnBaseDepth = 0.002; // desired thickness of the base
+        StringBuilder sb = new StringBuilder("");
+        double prnWidth = 0.120; // desired top width of 3D print 120mm, in meter unit
+        double prnBaseDepth = 0.002; // desired thickness of the base, 2mm
         
         double basedDepthPct = prnBaseDepth / prnWidth;
         
         // find out the proposed ZEXAGG
 
         double outputModelWidth = this.adjRect2DBox.getWidth()*convDegToEN(this.adjRect2DBox.getY())[0];  // in meter
-                
+        
+        
         Iterator<Vertice> iter  = vertices.iterator(); 
   
         // Displaying the values after iterating 
         // through the list 
-        double maxZ=0; 
+        double maxZ=0.0; 
+        double minZ=0.0;
         while (iter.hasNext()) { 
             maxZ = max(iter.next().z, maxZ);
+            minZ = min(iter.next().z, minZ);
         }
         
-        double scaledMaxZ = maxZ * prnWidth / outputModelWidth;   // when printed in 3D with prnWidth the maxZ will be scale down at the same rate to the print 
+        double scale = prnWidth / outputModelWidth;
+        double scaledMaxZ = maxZ * scale;   
+        // when printed in 3D with prnWidth the maxZ will be scale down at the same rate to the print 
         
-        double prnMaxZ = 0.004;   // desired max z height of the 3D print
+        double prnMaxZ = 0.010;   // desired max z height of the 3D print
         double zExagge = prnMaxZ / scaledMaxZ;
         
-        logger.log(Level.INFO, "prnWidth: {0}, prnBaseDepth: {1}, basedDepthPct: {2}\n", 
-                new Object[]{prnWidth, prnBaseDepth, basedDepthPct});
+        sb.append("proposed settings for 3D print title:").
+        append(this.boxProp.getProperty("TITLE")).
+        append(":\n\nA. to achieve a base depth of :").
+        append(String.format("%.2f",prnBaseDepth*1000.0)).append(" mm, \n").
+        append("based on a desirable print width (top side of the trapezium) of: ").
+        append(String.format("%.2f",prnWidth*1000.0)).append(" mm, \n").
+        append("the basedDepthPct parameter in the ???.hdr should be set as: ").
+        append(String.format("%.4f",basedDepthPct)).append("\n").
+        append("which is effective represent ").
+        append(String.format("%.2f",outputModelWidth * basedDepthPct)).append(" m in the z model");
+        
+        double scaleBlender2Repetitier = scale/measUnit;
+        
+        sb.append("\n\nB. scale, for such print width, based on the width in the model of: ").
+        append(String.format("%.2f",outputModelWidth)).append(" m, \n").
+        append("the scale is 1 to ").
+        append(String.format("%.2f",1/scale)).append(".\n").
+        append("Since there is a scale applied to the obj file with parameter MEASUNIT equal to: ").append(measUnit).
+        append("\nthe remaining scale would be applied in Repetitier Host on blender's export stl file: ").
+        append(String.format("%.6f", scaleBlender2Repetitier)).
+        append("\nand if the unit of Blender's export stl file is in km and repetitier host receive as mm, \ninheritedly a factor 0f 1000 is done during loading the stl file in RH").
+        append("then the scale in RH should be: ").
+        append(String.format("%.4f", scaleBlender2Repetitier*1000.0));
+    
+        sb.append("\n\nC. and at this scale, since the max Z (should be the height of Ben Nevis) is: ").
+        append(String.format("%.2f", maxZ)).append(" m, and minimum Z is: ").
+        append(String.format("%.2f", minZ)).append(" m,\n").
+        append("the print height would be: ").
+        append(String.format("%.2f", scaledMaxZ*1000.0)).append(" mm\n").
+        append("so to achieve a better feel of the landscape, to achieve a print height of say ").
+        append(String.format("%.2f", prnMaxZ*1000.0)).append(" mm, \nit need to apply an exaggeration factor, ZExagg, of ").
+        append(String.format("%.3f", zExagge));
+        
+        double zSeaRepProposed = 0.001/scale;
+        sb.append("\n\nD. and also at this scale, a 1 mm printed sea bed level required zSeaRep of: ").
+        append(String.format("%.3f",zSeaRepProposed)).append(" in m");
+                
+        
+        
+        logger.log(Level.INFO, "the proposed setting is:\n {0}", 
+                sb.toString());
   
-        logger.log(Level.INFO, "maxZ: {0}, prnMaxZ: {1}, zExagg: {2}\n", 
-                new Object[]{maxZ, prnMaxZ, zExagge});
-  
-        // calculate the scale when doing the 3D print
-        double scale = prnWidth/(outputModelWidth*this.measUnit);
-        logger.log(Level.INFO, "use Scale {0} to achieve a prnWidth of: {1} for width {2}\n", 
-                new Object[]{scale, prnWidth, outputModelWidth * this.measUnit});
+
   
         
         
@@ -380,12 +426,22 @@ public class WFObjWriter {
            // zGWSeaLvl is the sea level rise due to global warming.  land below this level 
            // would be submerged and represented as 80% of the seaDepth (should be in negative figure in the hdr file
            
-           sb.append(" ").append((((z == -9999) ? 
+           sb.append(" ").append
+           ((((z == -9999) ?               // if it is sea level set the depth to seaRepZ
                    seaRepZ  : 
-                   ((z > zGWSeaLvl) ? z * zExagg : seaRepZ * 1.5)  // when z less than zGWSeaLvl it go deeper then sea level
-                        ) 
-                    + baseDepth)* measUnit)
-                   .append("\n");
+                   ((z < zGWSeaLvl) && (z > 0.0)  ?           // for simulating Global warming impact on sea level.  
+                        seaRepZ * zExaggForGW :      // apply greater indent to show global warming effect   
+                        ((zFixedElv == -9999.9 ) ? 
+                                z  : 
+                                (z > 0) ?       // apply fixed elev (if not -9999.9) only to above sealevel z value, hence would affect the sea bed landscape or the baseplate
+                                        zFixedElv : z
+                        )* zExagg 
+                   )  // when z less than zGWSeaLvl it go deeper then sea level
+              )
+             + ((offsetZBaseDepthFlag == 1) ? baseDepth : 0.0) // z offset to avoid negative z value if the flag is 1 (default = 0)
+            )* measUnit
+           )
+           .append("\n");
             
 //            sb.append(" ").append((((z == -9999) ? seaRepZ : z ))).append("\n");
            return sb.toString();
@@ -699,7 +755,8 @@ public class WFObjWriter {
          // read parameters from local file
          // all local parameters are saved in the directory as defined in 
          // the UserProperties
-         String boxName = "scotlandV1";
+         String boxName = "scotlandV1";  // this is being printed to etsy
+         // String boxName = "scotlandOrkneyShetlandV1";
          UserProperties prop = new UserProperties();
          
          Properties boxProp = new Properties();

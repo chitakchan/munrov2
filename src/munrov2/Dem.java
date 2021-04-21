@@ -53,7 +53,7 @@ public class Dem {
 
     String strDemDir, strDemFileName;
     Rectangle2D rectBox = new Rectangle2D.Double();
-    Rectangle2D adjRect2DBox = new Rectangle2D.Double();
+    public Rectangle2D adjRect2DBox = new Rectangle2D.Double();
     Rectangle rectBoxIdx = new Rectangle();
     /*
     *  constructor to get the upper left corner then the width and length of the boundary
