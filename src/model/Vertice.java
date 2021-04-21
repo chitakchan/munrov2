@@ -9,7 +9,7 @@ package model;
  *
  * @author Think
  */
-public interface DummyInterface {
+public interface Vertice {
     
     /**
      * package model;
@@ -17,13 +17,14 @@ public interface DummyInterface {
 /**
  *
  * @author Think
+ * 
+ * */
  
-public interface Vertice {
+
     public double[] getXYZ();
     public double[] getENZ(double x, double y);
     public double[] getRCZ();
 }
 
-     */
+     
     
-}
