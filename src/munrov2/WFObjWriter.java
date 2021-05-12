@@ -59,6 +59,7 @@ public class WFObjWriter {
     // private final double xScale, yScale, zScale;
     private final double measUnit;
     private Properties boxProp;
+    private final UserProperties prop;
     private final double eFalseO;
     private final double nFalseO;
     private final double xTrueO;
@@ -69,15 +70,31 @@ public class WFObjWriter {
     private final double zFixedElv;
     private final double zExaggForGW;
     private final int offsetZBaseDepthFlag;
-
+    private final double printWidth;
+    private final String title;
+    private final String outFileDir;
+    private double prnLayerHt;
+    private ArrayList<Vertice> boxCornerVertices = new ArrayList<Vertice>();
+    
 
     /**
      * this constructor with properties as input allow keep individual region to 
      * provide all necessary parameters in a file 
      * @param boxProp 
      */
-    private WFObjWriter(Properties boxProp) {
-      
+    private WFObjWriter(String boxName) {
+        
+        
+        prop = new UserProperties();
+         
+        Properties boxProp = new Properties();
+        try {
+            boxProp.load(new FileInputStream(prop.getProperties("my.dear.home")+"\\"+boxName+".hdr"));
+            
+        } catch (IOException ex) {
+            Logger.getLogger(WFObjWriter.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        
         this.boxProp = boxProp;
                 
         Rectangle2D rect2DBox = new Rectangle2D.Double(
@@ -87,6 +104,7 @@ public class WFObjWriter {
         Double.parseDouble(boxProp.getProperty("HEIGHT"))
         );
 
+        this.title = boxProp.getProperty("TITLE","");
         this.seaRepZ = Double.parseDouble(boxProp.getProperty("SEAREPZ","-0"));
         this.zGWSeaLvl = Double.parseDouble(boxProp.getProperty("ZGWSEALVL","0.0"));
         this.zExaggForGW = Double.parseDouble(boxProp.getProperty("ZEXAGGFORGW","1.0"));
@@ -113,20 +131,38 @@ public class WFObjWriter {
         this.xyIncStep = dem.xDim;  // should be 30/3600 deg between two idx
         this.adjRect2DBox = dem.adjRect2DBox;
         
+        // register the vertices of the four corners for the box to allow calculation 
+        // of the base, starting from UL and in the order of UL, UR, LL, LR.
+     //   this.boxCornerVertices = new ArrayList<Vertice>();
+                  // add four corners, as if it is the map but just four points
+          boxCornerVertices.add(new Vertice(0, 0, 0));
+          boxCornerVertices.add(new Vertice(0,this.rectBoxIdx.width-1, 0));
+          boxCornerVertices.add(new Vertice(this.rectBoxIdx.height-1,0 ,0));
+          boxCornerVertices.add( new Vertice(rectBoxIdx.height-1, this.rectBoxIdx.width-1, 0));
+         
+        
+        
         // calculate the depth of the base
         // BASEDEPTH is the thickness of the base in meter calculated from applying a 
         // percentage (BASEDEPTHPCT) on to the Width, 
         // this Base depth will then be used to offset the z figure so that the whole model would not have negative z.
+        /*
         this.baseDepth = Double.parseDouble(boxProp.getProperty("BASEDEPTHPCT","0.05")) *
                 this.adjRect2DBox.getWidth()*convDegToEN(this.adjRect2DBox.getY())[0];
+        
+        */ 
+         
+        this.baseDepth = Double.parseDouble(boxProp.getProperty("BASEDEPTH","-1000.0")) + this.seaRepZ; 
         this.offsetZBaseDepthFlag = Integer.parseInt(boxProp.getProperty("OFFSETZBASEDEPTHFLAG","0")); 
+        this.printWidth = Double.parseDouble(boxProp.getProperty("PRINTWIDTH","0.100"));
+        this.prnLayerHt = Double.parseDouble(boxProp.getProperty("PRINTLAYERHEIGHT","0.3"));
+        this.outFileDir = boxProp.getProperty("OUTFILEDIR", this.prop.getProperties("my.dear.home"));
         
         logger.setLevel(Level.INFO);
  
         }
-      
 
-  
+    
 
     /**
      * lookup table for xScale and yScale
@@ -278,19 +314,68 @@ public class WFObjWriter {
     private void ProposedSettings() {
         
         // find out the proposed BASEDEPTHPCT
-        StringBuilder sb = new StringBuilder("");
-        double prnWidth = 0.120; // desired top width of 3D print 120mm, in meter unit
-        double prnBaseDepth = 0.002; // desired thickness of the base, 2mm
-        
-        double basedDepthPct = prnBaseDepth / prnWidth;
-        
-        // find out the proposed ZEXAGG
+        StringBuilder sb = new StringBuilder("Fact sheet");
+        double prnWidth = this.printWidth/1000.0; // desired top width of 3D print converted to meter in unit
+        // double prnBaseDepth = 0.002; // desired thickness of the base, 2mm
 
+        // scale the seaLevel and plate depth based on  the scale and the print bed and the desirable printbed
         double outputModelWidth = this.adjRect2DBox.getWidth()*convDegToEN(this.adjRect2DBox.getY())[0];  // in meter
+        double scale = prnWidth / outputModelWidth;
+        double prnDepthBelowSea = scale * (this.baseDepth - this.seaRepZ);
+        double prnSeaRepZ = scale * this.seaRepZ;
+        double prnLayerHt = this.prnLayerHt;
+        double countOfLayers = 0;
+        double cumCountOfLayers = 0;
+        sb.append("\n\nfor title: ").append(this.title);
+
+        // calculate easting and northing at UL with width and height.
+        double ulMapX = this.boxCornerVertices.get(0).x;
+        double ulMapY = this.boxCornerVertices.get(0).y;
+        double lrMapX = this.boxCornerVertices.get(3).x;
+        double lrMapY = this.boxCornerVertices.get(3).y;
+        double ulMapE = this.boxCornerVertices.get(0).getEN()[0];
+        double ulMapN = this.boxCornerVertices.get(0).getEN()[1];
+        double lrMapE = this.boxCornerVertices.get(3).getEN()[0];
+        double lrMapN = this.boxCornerVertices.get(3).getEN()[1];
         
+        sb.append("\nmapping in degrees:  upper left (x,y) = (").
+                append(String.format("%.2f",ulMapX)).append(", ").
+                append(String.format("%.2f",ulMapY)).append(") with  (width, height) = ( ").
+                append(String.format("%.2f",lrMapX-ulMapX)).append(", ").
+                append(String.format("%.2f",lrMapY-ulMapY)).append(" ).");
+        
+        sb.append("\nin km of easting and northing:  upper left (e,n) = (").
+                append(String.format("%.2f",ulMapE)).append(", ").
+                append(String.format("%.2f",ulMapN)).append(") with  (width, height) = (").
+                append(String.format("%.2f",lrMapE-ulMapE)).append(", ").
+                append(String.format("%.2f",lrMapN-ulMapN)).append(" ).");
+        
+        
+        sb.append("\n\n3D print size: with print scale of ").append(String.format("%.2f",scale*1000/this.measUnit)).append(" mm : 1000 m (Note 1)");
+        
+        sb.append("\nprint width (top of trapezium), ").append(String.format("%.2f",prnWidth*1000.0)).append(" mm : ").
+           append(String.format("%.2f",outputModelWidth)).append(" m");
+        
+        
+        sb.append("\nprint depth of sea bed from ground level, ").append(String.format("%.2f",prnSeaRepZ*1000.0)).append(" mm : ").
+           append(this.seaRepZ).append(" m");
+        countOfLayers = Math.abs(prnSeaRepZ*1000.0 / prnLayerHt);
+        cumCountOfLayers += countOfLayers;
+        sb.append("( ").append(String.format("%.1f",countOfLayers)).append(" layers (Note 2))");
+        
+        
+        sb.append("\nprint depth of base from sea bed to bottom, ").append(String.format("%.2f",prnDepthBelowSea*1000.0)).append(" mm : ").
+           append((this.baseDepth - this.seaRepZ)).append(" m");
+        
+        countOfLayers = Math.abs(prnDepthBelowSea*1000.0 / prnLayerHt);
+        cumCountOfLayers += countOfLayers;
+        sb.append("( ").append(String.format("%.1f",countOfLayers)).append(" layers)");
+
+        //
         
         Iterator<Vertice> iter  = vertices.iterator(); 
-  
+          
+        
         // Displaying the values after iterating 
         // through the list 
         double maxZ=0.0; 
@@ -299,59 +384,54 @@ public class WFObjWriter {
             maxZ = max(iter.next().z, maxZ);
             minZ = min(iter.next().z, minZ);
         }
-        
-        double scale = prnWidth / outputModelWidth;
-        double scaledMaxZ = maxZ * scale;   
+        double scaledMaxZ = maxZ * scale * this.zExagg;   
         // when printed in 3D with prnWidth the maxZ will be scale down at the same rate to the print 
         
-        double prnMaxZ = 0.010;   // desired max z height of the 3D print
-        double zExagge = prnMaxZ / scaledMaxZ;
+        sb.append("\nprint height of ben nevis, ").append(String.format("%.2f",scaledMaxZ*1000.0)).append(" mm (exaggerated at ").
+           append(this.zExagg).append(" ): ").
+           append(maxZ).append(" m (elevation from dem file)");
         
-        sb.append("proposed settings for 3D print title:").
-        append(this.boxProp.getProperty("TITLE")).
-        append(":\n\nA. to achieve a base depth of :").
-        append(String.format("%.2f",prnBaseDepth*1000.0)).append(" mm, \n").
-        append("based on a desirable print width (top side of the trapezium) of: ").
-        append(String.format("%.2f",prnWidth*1000.0)).append(" mm, \n").
-        append("the basedDepthPct parameter in the ???.hdr should be set as: ").
-        append(String.format("%.4f",basedDepthPct)).append("\n").
-        append("which is effective represent ").
-        append(String.format("%.2f",outputModelWidth * basedDepthPct)).append(" m in the z model");
         
-        double scaleBlender2Repetitier = scale/measUnit;
         
-        sb.append("\n\nB. scale, for such print width, based on the width in the model of: ").
-        append(String.format("%.2f",outputModelWidth)).append(" m, \n").
-        append("the scale is 1 to ").
-        append(String.format("%.2f",1/scale)).append(".\n").
-        append("Since there is a scale applied to the obj file with parameter MEASUNIT equal to: ").append(measUnit).
-        append("\nthe remaining scale would be applied in Repetitier Host on blender's export stl file: ").
-        append(String.format("%.6f", scaleBlender2Repetitier)).
-        append("\nand if the unit of Blender's export stl file is in km and repetitier host receive as mm, \ninheritedly a factor 0f 1000 is done during loading the stl file in RH").
-        append("then the scale in RH should be: ").
-        append(String.format("%.4f", scaleBlender2Repetitier*1000.0));
-    
-        sb.append("\n\nC. and at this scale, since the max Z (should be the height of Ben Nevis) is: ").
-        append(String.format("%.2f", maxZ)).append(" m, and minimum Z is: ").
-        append(String.format("%.2f", minZ)).append(" m,\n").
-        append("the print height would be: ").
-        append(String.format("%.2f", scaledMaxZ*1000.0)).append(" mm\n").
-        append("so to achieve a better feel of the landscape, to achieve a print height of say ").
-        append(String.format("%.2f", prnMaxZ*1000.0)).append(" mm, \nit need to apply an exaggeration factor, ZExagg, of ").
-        append(String.format("%.3f", zExagge));
+        // find out number of layers
+        countOfLayers = Math.abs(scaledMaxZ*1000.0 / prnLayerHt);
+        cumCountOfLayers += countOfLayers;
+        sb.append("( ").append(String.format("%.1f",countOfLayers)).append(" layers)");
         
-        double zSeaRepProposed = 0.001/scale;
-        sb.append("\n\nD. and also at this scale, a 1 mm printed sea bed level required zSeaRep of: ").
-        append(String.format("%.3f",zSeaRepProposed)).append(" in m");
+        
+        
+        sb.append("\n\nNote 1. to achieve the above, apply ").append(String.format("%.2f",scale*1000/this.measUnit)).append(" in Repetitier Host. ");
+        sb.append("\n\nNote 2. As each print layer is " + String.format("%.2f",this.prnLayerHt)
+                + " mm, allow about two layers"
+                + "\nfor the seabed and six layers for the base (from seabed to bottom), "
+                + "\ncalculate back to meter in hdr input file");
+        sb.append("\n\nNote 3. total no. of layers = ").append(String.format("%.1f",cumCountOfLayers));
+        sb.append("\n\nNote 4. it is desirable to have 3 layers printed at top surface, no layer printed at the bottom, and "
+                + "\nwhatever in-between is infill with pattern like honeycomb.");
                 
-        
-        
         logger.log(Level.INFO, "the proposed setting is:\n {0}", 
                 sb.toString());
-  
-
-  
         
+           // write to file
+        
+    try {
+
+        logger.log(Level.INFO, "Writing to file: {0}....", 
+                         this.outFileDir +"\\"+title + "Output.txt");
+        
+        logger.log(Level.FINE, "Writing sb: {0} \n total length: \n {1}", 
+                         new Object[]{sb.toString(),sb.toString().length()} );
+        
+        FileOutputStream fos = new FileOutputStream(this.outFileDir +"\\"+title + "Output.txt");
+        byte[] bytesArray = sb.toString().getBytes();
+
+	  fos.write(bytesArray);
+	  fos.flush();
+    
+        }   catch (IOException ex) {
+            Logger.getLogger(WFObjWriter.class.getName()).log(Level.SEVERE, null, ex);
+        }
+  
         
     }
     
@@ -405,12 +485,28 @@ public class WFObjWriter {
             this.y = y;
             this.z = z;
         }
-         
+        // get the easting and northing from the lon, lat coordinate 
+        
+        public double[] getEN(){
+            
+           double[] eN = {0,0};
+           double x2E = convDegToEN(this.y)[0];
+           double y2N = convDegToEN(this.y)[1];
+           double easting = (this.x - xTrueO) * x2E;
+           double northing = (this.y - yTrueO) * y2N;
+           double eastingFalse = easting - eFalseO;
+           double northingFalse = northing - nFalseO;
+           eN[0]=eastingFalse * measUnit;
+           eN[1]=northingFalse * measUnit;
+           return eN;
+            
+        }
         
         public String toString(){
             StringBuilder sb = new StringBuilder("");
 
-           double x2E = convDegToEN(this.y)[0];
+           /*
+            double x2E = convDegToEN(this.y)[0];
            double y2N = convDegToEN(this.y)[1];
            double easting = (this.x - xTrueO) * x2E;
            double northing = (this.y - yTrueO) * y2N;
@@ -418,6 +514,10 @@ public class WFObjWriter {
            double northingFalse = northing - nFalseO;
            sb.append("v ").append(eastingFalse * measUnit);
            sb.append(" ").append(northingFalse * measUnit);
+            */
+           
+           sb.append("v ").append(this.getEN()[0]);
+           sb.append(" ").append(this.getEN()[1]);
            // Z of the geographical model should be pushed upwards by the baseDepth to 
            // avoid negative z,
            // because it is an offset and is dependent on width of the model
@@ -426,7 +526,32 @@ public class WFObjWriter {
            // zGWSeaLvl is the sea level rise due to global warming.  land below this level 
            // would be submerged and represented as 80% of the seaDepth (should be in negative figure in the hdr file
            
-           sb.append(" ").append
+           double zValue=0.0;
+           
+           if (z == -9999) {            // if it is sea level set the depth to seaRepZ
+               zValue = seaRepZ;
+           } else {
+               if (z >0){
+                    if ((z < zGWSeaLvl) && (z > 0.0)) {  // for simulating Global warming impact on sea level.  
+                        zValue = seaRepZ * zExaggForGW;      // apply greater indent to show global warming effect   
+                    } else {
+                        if (zFixedElv == -9999.9 ) {       // apply fixed elev (if not -9999.9) only to above sealevel z value, hence would affect the sea bed landscape or the baseplate
+                            zValue = z * zExagg;
+                        } else {
+                            zValue = zFixedElv;
+                        }
+                    }
+               } else {
+                   zValue = z;      // for negative value there is no need to apply zExagg
+               }
+           }
+           
+           // z offset to avoid negative z value if the flag is 1 (default = 0)
+            zValue = (zValue + ((offsetZBaseDepthFlag == 1) ? - baseDepth : 0.0)) * measUnit; 
+            sb.append(" ").append(zValue).append("\n");
+            
+           /*
+            sb.append(" ").append
            ((((z == -9999) ?               // if it is sea level set the depth to seaRepZ
                    seaRepZ  : 
                    ((z < zGWSeaLvl) && (z > 0.0)  ?           // for simulating Global warming impact on sea level.  
@@ -442,6 +567,10 @@ public class WFObjWriter {
             )* measUnit
            )
            .append("\n");
+            */
+           
+           
+           
             
 //            sb.append(" ").append((((z == -9999) ? seaRepZ : z ))).append("\n");
            return sb.toString();
@@ -603,7 +732,8 @@ public class WFObjWriter {
         
         sb.append(PrintVertices(this.vertices));
         
-        sb.append(CreateBaseVertices(-this.baseDepth/zExagg));  
+        // sb.append(CreateBaseVertices(-this.baseDepth/zExagg));  
+        sb.append(CreateBaseVertices(this.baseDepth));  
         // need to reset the zExagg as it will be applied later on the whole object including geographic model
         // write text for surfaces
         
@@ -629,20 +759,16 @@ public class WFObjWriter {
         logger.log(Level.FINE, "result of .obj: \n {0}", sb.toString() );
         
         // write to file
-        UserProperties pro = new UserProperties();
-        String sDir = pro.getProperties("my.dear.home");//eg. username="zub"
-        logger.log(Level.INFO, "sDir: {0}", sDir);
         
-    
     try {
 
         logger.log(Level.INFO, "Writing to file: {0}....", 
-                         sDir+"\\"+fileName);
+                         this.outFileDir +"\\"+fileName);
         
         logger.log(Level.FINE, "Writing sb: {0} \n total length: \n {1}", 
                          new Object[]{sb.toString(),sb.toString().length()} );
         
-        FileOutputStream fos = new FileOutputStream(sDir+"\\"+fileName);
+        FileOutputStream fos = new FileOutputStream(this.outFileDir +"\\"+fileName);
         byte[] bytesArray = sb.toString().getBytes();
 
 	  fos.write(bytesArray);
@@ -755,19 +881,22 @@ public class WFObjWriter {
          // read parameters from local file
          // all local parameters are saved in the directory as defined in 
          // the UserProperties
-         String boxName = "scotlandV1";  // this is being printed to etsy
-         // String boxName = "scotlandOrkneyShetlandV1";
-         UserProperties prop = new UserProperties();
          
-         Properties boxProp = new Properties();
-        try {
-            boxProp.load(new FileInputStream(prop.getProperties("my.dear.home")+"\\"+boxName+".hdr"));
-            
-        } catch (IOException ex) {
-            Logger.getLogger(WFObjWriter.class.getName()).log(Level.SEVERE, null, ex);
-        }
-    
-        WFObjWriter obj = new WFObjWriter(boxProp);
+         // printed and published in etsy for scotlandV1
+         // String boxName = "scotlandV1";  
+         
+        // printed and published in etsy for OrkneyShetLand
+        //   String boxName = "scotlandOrkneyShetlandV1";
+
+          // String boxName = "iceLandV1Left";  
+           // String boxName = "iceLandV1Right";  
+            // String boxName = "jeju";  
+            // String boxName = "indiaV1";  
+          // String boxName = "iceLandV2Left";  
+          String boxName = "iceLandV2Right";  
+          
+        // WFObjWriter obj = new WFObjWriter(boxProp);
+        WFObjWriter obj = new WFObjWriter(boxName);
         obj.CreateVertices();
         obj.CreateSurfaces();
         obj.WriteObjFile();

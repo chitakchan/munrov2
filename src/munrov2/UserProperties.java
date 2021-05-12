@@ -26,7 +26,7 @@ public final class UserProperties {
     
      private static final Logger logger = Logger.getLogger(UserProperties.class.getName());
      Properties pro;
-     String sDir, sTestDir;
+     // String sDir, sTestDir;
      String sPropertyFileName;
      
     public UserProperties() {

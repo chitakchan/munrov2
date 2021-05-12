@@ -81,6 +81,38 @@ public class Dem {
         this.strDemDir = strDemDir;
         this.strDemFileName = strDemFileName;
         readHdr();
+        /*
+        // redefine the ul and lr corner to match the matrix points as 
+        // contained in the goto 30sec map
+        double ulX, ulY, lrX, lrY;  // new ul and lr corner of the rectBox
+        
+        int ulIdX, ulIdY, lrIdX, lrIdY, idW, idH;
+        // the ul corner should be tended leftward and upward towards the map's UL corner, hence floor
+        ulIdX = (int) Math.floor((this.rectBox.getX() - this.ulXmap)/this.xDim);
+        ulIdY = (int) Math.floor((this.ulYmap - this.rectBox.getY())/this.yDim);
+        // conversely the lr corner should be tended rightward and downward away from the maps's UL corner, hence ceiling
+        lrIdX = (int) Math.ceil((this.rectBox.getX() + this.rectBox.getWidth() - this.ulXmap)/this.xDim);
+        lrIdY = (int) Math.ceil((this.ulYmap - (this.rectBox.getY() - this.rectBox.getHeight()) )/this.yDim);
+        idW = lrIdX - ulIdX;
+        idH = lrIdY - ulIdY;  // not reverse, as idx is ascending downwards, ulik Y latitude which is descending downwards
+        
+        this.rectBoxIdx = new Rectangle (
+            ulIdX, ulIdY,idW, idH
+                
+        );
+        
+        this.adjRect2DBox.setRect(
+            this.ulXmap+ulIdX*this.xDim, 
+                this.ulYmap-ulIdY*this.yDim, 
+                idW*this.xDim, 
+                idH*this.yDim
+        );
+        
+        
+        
+        
+        */
+        
         // focus on the box boundary defined in the constructor
         this.rectBoxIdx = new Rectangle (
                 (int) ((this.rectBox.getX() - this.ulXmap)/this.xDim),
@@ -95,6 +127,36 @@ public class Dem {
                 - this.rectBoxIdx.y * this.yDim + this.ulYmap,
                 this.rectBoxIdx.width * this.xDim, this.rectBoxIdx.height * this.yDim
                 );
+        
+        StringBuilder sb = new StringBuilder("");
+        
+        sb.append("rectangle of map:\n");
+        sb.append("(").append(this.ulXmap).append(", ").append(this.ulYmap)
+                .append(this.nCols).append(", ").append(this.nRows).append(")");
+        
+        
+        
+        sb.append("rectangle of rectBox input:\n");
+        sb.append("(").append(this.rectBox.getX()).append(", ").append(this.rectBox.getY())
+                .append(this.rectBox.getWidth()).append(", ").append(this.rectBox.getHeight()).append(")");
+        
+        sb.append("rectangle of rectBox adjusted in degree:\n");
+        sb.append("(").append(this.adjRect2DBox.getX()).append(", ").append(this.adjRect2DBox.getY())
+                .append(this.adjRect2DBox.getWidth()).append(", ").append(this.adjRect2DBox.getHeight()).append(")");
+        
+        sb.append("lower right corner of rectBox adjusted in degree:\n");
+        sb.append("(").append(this.adjRect2DBox.getX() + this.adjRect2DBox.getWidth()).append(", ").append(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())
+                .append(")");
+        
+        sb.append("rectangle of rectBox adjusted in idx:\n");
+        sb.append("(").append(this.rectBoxIdx.x).append(", ").append(this.rectBoxIdx.x)
+                .append(this.rectBoxIdx.width).append(", ").append(this.rectBoxIdx.height).append(")");
+        
+        
+        
+        logger.log(Level.INFO, sb.toString());
+                
+        
                 
             //    = new Rectangle2D (0,0,0,0
         
