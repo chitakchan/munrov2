@@ -99,7 +99,8 @@ public class MunroObjWriter {
         
     public static void main(String[] args) {
         
-        String boxName = "bottomMunrosV1";
+        String boxName = "himalayaVertices";
+        
         // get general property file under system home directory
         UserProperties prop = new UserProperties();
          

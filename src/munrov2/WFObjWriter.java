@@ -74,6 +74,7 @@ public class WFObjWriter {
     private final String title;
     private final String outFileDir;
     private double prnLayerHt;
+    private final int lrExt;
     private ArrayList<Vertice> boxCornerVertices = new ArrayList<Vertice>();
     
 
@@ -121,12 +122,13 @@ public class WFObjWriter {
         this.nFalseO = Double.parseDouble(boxProp.getProperty("NFALSEO","0.0"));
         this.zExagg = Double.parseDouble(boxProp.getProperty("ZEXAGG","1.0"));
         this.zFixedElv = Double.parseDouble(boxProp.getProperty("ZFIXEDELV", "-9999.9"));
-        
+        this.lrExt = Integer.parseUnsignedInt(boxProp.getProperty("LREXT", "0"));
         // create a dem object and retrieve the relevant idx of the box from its calculation
          
         this.dem = new Dem(rect2DBox, 
                 boxProp.getProperty("Gtopo30.dem.dir"), 
-                boxProp.getProperty("default.demFileNamePt1"));            
+                boxProp.getProperty("default.demFileNamePt1"),
+                lrExt);            
         this.rectBoxIdx = dem.rectBoxIdx;
         this.xyIncStep = dem.xDim;  // should be 30/3600 deg between two idx
         this.adjRect2DBox = dem.adjRect2DBox;
@@ -380,10 +382,30 @@ public class WFObjWriter {
         // through the list 
         double maxZ=0.0; 
         double minZ=0.0;
-        while (iter.hasNext()) { 
-            maxZ = max(iter.next().z, maxZ);
-            minZ = min(iter.next().z, minZ);
+
+        //
+        
+        /*
+        while (iter.hasNext()) {
+            
+                maxZ = max(iter.next().z, maxZ);
+                minZ = min(iter.next().z, minZ);
+             
+            
         }
+        */
+        double dummy = 0.0;
+        do {
+            // only call next() method once on each iteration
+            // otherwise it might go beyond the end of the arraylist and issue no such element exceptions
+            //
+                dummy = iter.next().z;
+                maxZ = max(dummy, maxZ);
+                minZ = min(dummy, minZ);
+             
+            
+        } while (iter.hasNext());
+        
         double scaledMaxZ = maxZ * scale * this.zExagg;   
         // when printed in 3D with prnWidth the maxZ will be scale down at the same rate to the print 
         
@@ -890,10 +912,11 @@ public class WFObjWriter {
 
           // String boxName = "iceLandV1Left";  
            // String boxName = "iceLandV1Right";  
-            // String boxName = "jeju";  
-            // String boxName = "indiaV1";  
-          // String boxName = "iceLandV2Left";  
-          String boxName = "iceLandV2Right";  
+         //  String boxName = "jeju";  
+         // String boxName = "indiaV1";  // 4TH PRINT UNDERWAY
+           // String boxName = "iceLandV2Left";  
+          // String boxName = "iceLandV2Right";  
+          String boxName = "unst";  
           
         // WFObjWriter obj = new WFObjWriter(boxProp);
         WFObjWriter obj = new WFObjWriter(boxName);

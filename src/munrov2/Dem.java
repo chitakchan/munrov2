@@ -48,7 +48,7 @@ public class Dem {
     // constructure to create a dem class with digital elevation data read from a
     // designated dem file
     String byteOrder, layout;
-    int nRows, nCols, nBands, nBits, bandRowBytes, totalRowBytes, bandGapBytes, noData;
+    private int nRows, nCols, nBands, nBits, bandRowBytes, totalRowBytes, bandGapBytes, noData;
     double ulXmap, ulYmap, xDim, yDim;
 
     String strDemDir, strDemFileName;
@@ -63,18 +63,35 @@ public class Dem {
     */
     
     // https://stackoverflow.com/questions/581873/best-way-to-handle-multiple-constructors-in-java
-      
+          
       
     public Dem (Rectangle2D rectBox){
          
        this (rectBox, 
                new UserProperties().getProperties("Gtopo30.dem.dir"), 
-               new UserProperties().getProperties("default.demFileNamePt1"));
+               new UserProperties().getProperties("default.demFileNamePt1"), 0);
+                
+               
     }
     
     
     
-    public Dem (Rectangle2D rectBox, String strDemDir, String strDemFileName){
+    public Dem (Rectangle2D rectBox, Integer lrExt){
+         
+       this (rectBox, 
+               new UserProperties().getProperties("Gtopo30.dem.dir"), 
+               new UserProperties().getProperties("default.demFileNamePt1"), lrExt);
+                
+               
+    }
+    
+     public Dem (Rectangle2D rectBox, String strDemDir, String strDemFileName){
+       this (rectBox, strDemDir, strDemFileName, 0);
+                
+         
+     }
+    
+    public Dem (Rectangle2D rectBox, String strDemDir, String strDemFileName, Integer lrExt){
         
         this.rectBox = rectBox;
         
@@ -82,36 +99,8 @@ public class Dem {
         this.strDemFileName = strDemFileName;
         readHdr();
         /*
-        // redefine the ul and lr corner to match the matrix points as 
-        // contained in the goto 30sec map
-        double ulX, ulY, lrX, lrY;  // new ul and lr corner of the rectBox
-        
-        int ulIdX, ulIdY, lrIdX, lrIdY, idW, idH;
-        // the ul corner should be tended leftward and upward towards the map's UL corner, hence floor
-        ulIdX = (int) Math.floor((this.rectBox.getX() - this.ulXmap)/this.xDim);
-        ulIdY = (int) Math.floor((this.ulYmap - this.rectBox.getY())/this.yDim);
-        // conversely the lr corner should be tended rightward and downward away from the maps's UL corner, hence ceiling
-        lrIdX = (int) Math.ceil((this.rectBox.getX() + this.rectBox.getWidth() - this.ulXmap)/this.xDim);
-        lrIdY = (int) Math.ceil((this.ulYmap - (this.rectBox.getY() - this.rectBox.getHeight()) )/this.yDim);
-        idW = lrIdX - ulIdX;
-        idH = lrIdY - ulIdY;  // not reverse, as idx is ascending downwards, ulik Y latitude which is descending downwards
-        
-        this.rectBoxIdx = new Rectangle (
-            ulIdX, ulIdY,idW, idH
-                
-        );
-        
-        this.adjRect2DBox.setRect(
-            this.ulXmap+ulIdX*this.xDim, 
-                this.ulYmap-ulIdY*this.yDim, 
-                idW*this.xDim, 
-                idH*this.yDim
-        );
-        
-        
-        
-        
-        */
+        // old method, but it may not covers the planned rectangle depending on where
+        // the index of the map aligns with calculation of index
         
         // focus on the box boundary defined in the constructor
         this.rectBoxIdx = new Rectangle (
@@ -128,28 +117,90 @@ public class Dem {
                 this.rectBoxIdx.width * this.xDim, this.rectBoxIdx.height * this.yDim
                 );
         
+        
+        */
+        // redefine the ul and lr corner to match the matrix points as 
+        // contained in the goto 30sec map
+        // it ensures the original ul and lr corner are covered.
+        double ulX, ulY, lrX, lrY;  // new ul and lr corner of the rectBox
+        
+        int ulIdX, ulIdY, lrIdX, lrIdY, idW, idH;
+        // the ul corner should be tended leftward and upward towards the map's UL corner, hence floor
+        ulIdX = (int) Math.max(0, Math.floor((this.rectBox.getX() - this.ulXmap)/this.xDim));
+        ulIdY = (int) Math.max(0, Math.floor((this.ulYmap - this.rectBox.getY())/this.yDim));
+        // conversely the lr corner should be tended rightward and downward away from the maps's UL corner, hence ceiling
+        double inputLrX, inputLrY;      // original planned lower right corner (in degree) to be included 
+        
+        
+        // but still within the current confined area of map
+        // and extend one unit further if set so in the user property via LREXT
+        
+        /*
+        // this work
+        inputLrX = this.rectBox.getX() + this.rectBox.getWidth();
+        inputLrY = this.rectBox.getY() - this.rectBox.getHeight();      // does this still work for southern hemisphere??
+        
+        lrIdX = (int) Math.min(this.nCols, Math.ceil((inputLrX - this.ulXmap)/this.xDim)+(lrExt == 1? 1: 0));
+        lrIdY = (int) Math.min(this.nRows, Math.ceil((this.ulYmap - inputLrY)/this.yDim)+(lrExt == 1? 1: 0));
+        idW = lrIdX - ulIdX;
+        idH = lrIdY - ulIdY;  // not reverse, as idx is ascending downwards, ulik Y latitude which is descending downwards
+        
+        */
+        // attempt to seam the tile with the other one
+        
+        idW = (int) Math.round(this.rectBox.getWidth() / this.xDim) +(lrExt == 1? 1: 0);
+        idH = (int) Math.round(this.rectBox.getHeight() / this.yDim) +(lrExt == 1? 1: 0);
+        
+        lrIdX = ulIdX + idW;
+        lrIdY = ulIdY + idH;
+        
+        this.rectBoxIdx = new Rectangle (
+            ulIdX, ulIdY,idW, idH
+                
+        );
+        
+        this.adjRect2DBox.setRect(
+            this.ulXmap+ulIdX*this.xDim, 
+                this.ulYmap-ulIdY*this.yDim, 
+                idW*this.xDim, 
+                idH*this.yDim
+        );
+        
+        
+        
+        
+        
+        
+        
         StringBuilder sb = new StringBuilder("");
         
         sb.append("rectangle of map:\n");
-        sb.append("(").append(this.ulXmap).append(", ").append(this.ulYmap)
+        sb.append("(").append(this.ulXmap).append(", ").append(this.ulYmap).append(", ")
                 .append(this.nCols).append(", ").append(this.nRows).append(")");
         
         
         
-        sb.append("rectangle of rectBox input:\n");
-        sb.append("(").append(this.rectBox.getX()).append(", ").append(this.rectBox.getY())
+        sb.append("\nrectangle of rectBox input:\n");
+        sb.append("(").append(this.rectBox.getX()).append(", ").append(this.rectBox.getY()).append(", ")
                 .append(this.rectBox.getWidth()).append(", ").append(this.rectBox.getHeight()).append(")");
         
-        sb.append("rectangle of rectBox adjusted in degree:\n");
-        sb.append("(").append(this.adjRect2DBox.getX()).append(", ").append(this.adjRect2DBox.getY())
-                .append(this.adjRect2DBox.getWidth()).append(", ").append(this.adjRect2DBox.getHeight()).append(")");
-        
-        sb.append("lower right corner of rectBox adjusted in degree:\n");
-        sb.append("(").append(this.adjRect2DBox.getX() + this.adjRect2DBox.getWidth()).append(", ").append(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())
+        sb.append("\nlower right corner of rectBox input in degree:\n");
+        sb.append("(").append(this.rectBox.getX() + this.rectBox.getWidth())
+                .append(", ").append(this.rectBox.getY()-this.rectBox.getHeight())
                 .append(")");
         
-        sb.append("rectangle of rectBox adjusted in idx:\n");
-        sb.append("(").append(this.rectBoxIdx.x).append(", ").append(this.rectBoxIdx.x)
+        
+        sb.append("\nrectangle of rectBox adjusted in degree:\n");
+        sb.append("(").append(this.adjRect2DBox.getX()).append(", ").append(this.adjRect2DBox.getY()).append(", ")
+                .append(this.adjRect2DBox.getWidth()).append(", ").append(this.adjRect2DBox.getHeight()).append(")");
+        
+        sb.append("\nlower right corner of rectBox adjusted in degree:\n");
+        sb.append("(").append(this.adjRect2DBox.getX() + this.adjRect2DBox.getWidth())
+                .append(", ").append(this.adjRect2DBox.getY()-this.adjRect2DBox.getHeight())
+                .append(")");
+        
+        sb.append("\nrectangle of rectBox adjusted in idx:\n");
+        sb.append("(").append(this.rectBoxIdx.x).append(", ").append(this.rectBoxIdx.y).append(", ")
                 .append(this.rectBoxIdx.width).append(", ").append(this.rectBoxIdx.height).append(")");
         
         
@@ -208,6 +259,7 @@ public class Dem {
             ulYmap = Double.parseDouble(prop.getProperty("ULYMAP")); 
             xDim  = Double.parseDouble(prop.getProperty("XDIM")); 
             yDim  = Double.parseDouble(prop.getProperty("YDIM")); 
+            
             
             // Band interleaved by line.  note that the DEM is a single band image
             
