@@ -916,8 +916,8 @@ public class WFObjWriter {
          // String boxName = "indiaV1";  // 4TH PRINT UNDERWAY
            // String boxName = "iceLandV2Left";  
           // String boxName = "iceLandV2Right";  
-          String boxName = "unst";  
-          
+         // String boxName = "unst";  
+           String boxName = "benNevisV1";  
         // WFObjWriter obj = new WFObjWriter(boxProp);
         WFObjWriter obj = new WFObjWriter(boxName);
         obj.CreateVertices();
