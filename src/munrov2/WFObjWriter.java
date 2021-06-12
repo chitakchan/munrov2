@@ -69,6 +69,7 @@ public class WFObjWriter {
     private final double zGWSeaLvl;
     private final double zFixedElv;
     private final double zExaggForGW;
+    private final int mapFileType;
     private final int offsetZBaseDepthFlag;
     private final double printWidth;
     private final String title;
@@ -76,6 +77,7 @@ public class WFObjWriter {
     private double prnLayerHt;
     private final int lrExt;
     private ArrayList<Vertice> boxCornerVertices = new ArrayList<Vertice>();
+    private final double seaSrcZ;
     
 
     /**
@@ -106,7 +108,9 @@ public class WFObjWriter {
         );
 
         this.title = boxProp.getProperty("TITLE","");
+        this.seaSrcZ = Double.parseDouble(boxProp.getProperty("SEASRCZ","-9999.0"));
         this.seaRepZ = Double.parseDouble(boxProp.getProperty("SEAREPZ","-0"));
+        
         this.zGWSeaLvl = Double.parseDouble(boxProp.getProperty("ZGWSEALVL","0.0"));
         this.zExaggForGW = Double.parseDouble(boxProp.getProperty("ZEXAGGFORGW","1.0"));
         // sea was represented by usgs as -9999.  changed to a new value here.
@@ -123,12 +127,13 @@ public class WFObjWriter {
         this.zExagg = Double.parseDouble(boxProp.getProperty("ZEXAGG","1.0"));
         this.zFixedElv = Double.parseDouble(boxProp.getProperty("ZFIXEDELV", "-9999.9"));
         this.lrExt = Integer.parseUnsignedInt(boxProp.getProperty("LREXT", "0"));
-        // create a dem object and retrieve the relevant idx of the box from its calculation
+        this.mapFileType = Integer.parseUnsignedInt(boxProp.getProperty("MAPFILETYPE", "0"));
+// create a dem object and retrieve the relevant idx of the box from its calculation
          
         this.dem = new Dem(rect2DBox, 
                 boxProp.getProperty("Gtopo30.dem.dir"), 
                 boxProp.getProperty("default.demFileNamePt1"),
-                lrExt);            
+                this.lrExt, this.mapFileType);            
         this.rectBoxIdx = dem.rectBoxIdx;
         this.xyIncStep = dem.xDim;  // should be 30/3600 deg between two idx
         this.adjRect2DBox = dem.adjRect2DBox;
@@ -162,6 +167,10 @@ public class WFObjWriter {
         
         logger.setLevel(Level.INFO);
  
+        this.CreateVertices();
+        this.CreateSurfaces();
+        
+        
         }
 
     
@@ -241,27 +250,7 @@ public class WFObjWriter {
         return this.vertices.get(position);
         
     }
-    /*
-        Not used, replaced by calling Dem class and adjust the rectangle
-        */
-        public void AdjCorners(){
-            
-       logger.log(Level.INFO, "before adjustment: \nULCorner {0}, {1}; LRCorner {2}, {3}\n", new Object[]{
-            xULCorner, yULCorner, xLRCorner, yLRCorner});
-       
-        // adjust the xULCorner and yULCorner to the point in line with the DEM 
-        // floor is to find the double which is smaller then the argument and is equal to 
-        // a mathematical integer.  ceil is conversely the similar but is bigger than the 
-        // argument
-        // convert the deg to sec then div by 30 arc sec, 
-        xULCorner = Math.floor(xULCorner*120)/120;
-        yULCorner = Math.ceil(yULCorner*120)/120;
-        xLRCorner = Math.ceil(xLRCorner*120)/120;        
-        yLRCorner = Math.floor(yLRCorner*120)/120;
-        logger.log(Level.INFO, "After adjustment with Math.ceil and floor:\nULCorner {0}, {1}; LRCorner {2}, {3}\n", new Object[]{
-            xULCorner, yULCorner, xLRCorner, yLRCorner}
-        );
-    }
+ 
         
     /**
      * convert the 2D index of the position into sequence number in the obj file
@@ -331,26 +320,35 @@ public class WFObjWriter {
         sb.append("\n\nfor title: ").append(this.title);
 
         // calculate easting and northing at UL with width and height.
+        // UL, UR, LL, LR.
         double ulMapX = this.boxCornerVertices.get(0).x;
         double ulMapY = this.boxCornerVertices.get(0).y;
-        double lrMapX = this.boxCornerVertices.get(3).x;
-        double lrMapY = this.boxCornerVertices.get(3).y;
         double ulMapE = this.boxCornerVertices.get(0).getEN()[0];
         double ulMapN = this.boxCornerVertices.get(0).getEN()[1];
+                
+        double lrMapX = this.boxCornerVertices.get(3).x;
+        double lrMapY = this.boxCornerVertices.get(3).y;
         double lrMapE = this.boxCornerVertices.get(3).getEN()[0];
         double lrMapN = this.boxCornerVertices.get(3).getEN()[1];
+
         
         sb.append("\nmapping in degrees:  upper left (x,y) = (").
                 append(String.format("%.2f",ulMapX)).append(", ").
                 append(String.format("%.2f",ulMapY)).append(") with  (width, height) = ( ").
                 append(String.format("%.2f",lrMapX-ulMapX)).append(", ").
                 append(String.format("%.2f",lrMapY-ulMapY)).append(" ).");
-        
+
         sb.append("\nin km of easting and northing:  upper left (e,n) = (").
                 append(String.format("%.2f",ulMapE)).append(", ").
                 append(String.format("%.2f",ulMapN)).append(") with  (width, height) = (").
                 append(String.format("%.2f",lrMapE-ulMapE)).append(", ").
                 append(String.format("%.2f",lrMapN-ulMapN)).append(" ).");
+
+        sb.append("\ncoordinates of the corners (in order of UL, UR, LL, LR):").
+        append(this.boxCornerVertices.get(0).getXYENString()).append("\n").
+        append(this.boxCornerVertices.get(1).getXYENString()).append("\n").
+        append(this.boxCornerVertices.get(2).getXYENString()).append("\n").
+        append(this.boxCornerVertices.get(3).getXYENString());
         
         
         sb.append("\n\n3D print size: with print scale of ").append(String.format("%.2f",scale*1000/this.measUnit)).append(" mm : 1000 m (Note 1)");
@@ -524,6 +522,17 @@ public class WFObjWriter {
             
         }
         
+        public String getXYENString() {
+            StringBuilder sb = new StringBuilder ("");
+           //  sb.append(sb)this.x
+                 sb.append("\n(x,y) = (").
+                append(String.format("%.2f",this.x)).append(", ").
+                append(String.format("%.2f",this.y)).append(") with  (e, n) = ( ").
+                append(String.format("%.2f",this.getEN()[0])).append(", ").
+                append(String.format("%.2f",this.getEN()[1])).append(" ).");
+            return sb.toString();
+        }
+        
         public String toString(){
             StringBuilder sb = new StringBuilder("");
 
@@ -550,7 +559,7 @@ public class WFObjWriter {
            
            double zValue=0.0;
            
-           if (z == -9999) {            // if it is sea level set the depth to seaRepZ
+           if (z == seaSrcZ) {            // if it is sea level set the depth to seaRepZ
                zValue = seaRepZ;
            } else {
                if (z >0){
@@ -620,24 +629,7 @@ public class WFObjWriter {
     }
     
     
-    /**
-     * not used
-     * @param x
-     * @param y
-     * @return 
-     */
-    public double GetZ (double x, double y ) {
-        // use random number within range of say 0 to 50
-        // see https://stackoverflow.com/questions/363681/how-do-i-generate-random-integers-within-a-specific-range-in-java
-        // nextInt is normally exclusive of the top value,
-        // so add 1 to make it inclusive
 
-        
-        double max = 30.0/3600;  // 30 arc second represent about 1kms
-        double min = 0.0;
-        return ThreadLocalRandom.current().nextDouble(min, max);
-    }
-    
     public String PrintVertices (ArrayList<Vertice> vertices) {
         StringBuilder sbVertices = new StringBuilder("");
           // Create an iterator for the list 
@@ -682,7 +674,12 @@ public class WFObjWriter {
         // Dem dem;
         z = new short[this.rectBoxIdx.height][this.rectBoxIdx.width];
         // assume data from srmt and copy to the z array;
-        dem.readDem();
+        if (this.mapFileType == 0) {
+            dem.readDem();
+        } else if (this.mapFileType == 1) {
+            dem.readTiff();
+            }
+            
         this.z=(dem.z).clone();
         
         /*
@@ -917,11 +914,19 @@ public class WFObjWriter {
            // String boxName = "iceLandV2Left";  
           // String boxName = "iceLandV2Right";  
          // String boxName = "unst";  
-           String boxName = "benNevisV1";  
+         
+           // String boxName = "benNevisV1";  // 1st print on 30th may 2021
         // WFObjWriter obj = new WFObjWriter(boxProp);
+        
+        // String boxName = "unstGMTED075";  
+        // String boxName = "taiwanGMTED075";  
+        // String boxName = "taiwanGMTED075Left";  
+     //   String boxName = "taiwanGMTED150";  
+       String boxName = "taiwanGMTED150Left";  
+        
         WFObjWriter obj = new WFObjWriter(boxName);
-        obj.CreateVertices();
-        obj.CreateSurfaces();
+        // obj.CreateVertices();
+        // obj.CreateSurfaces();
         obj.WriteObjFile();
         obj.ProposedSettings();
         

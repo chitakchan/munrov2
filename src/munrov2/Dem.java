@@ -10,6 +10,7 @@ import java.awt.Rectangle;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
+import java.awt.image.DataBufferInt;
 import java.awt.image.DataBufferUShort;
 import java.awt.image.Raster;
 import java.awt.image.WritableRaster;
@@ -17,7 +18,14 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.StringReader;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,6 +34,21 @@ import javax.imageio.stream.ImageInputStream;
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import org.apache.commons.imaging.FormatCompliance;
+import org.apache.commons.imaging.ImageReadException;
+import org.apache.commons.imaging.Imaging;
+import org.apache.commons.imaging.ImagingConstants;
+import org.apache.commons.imaging.common.ImageMetadata;
+import org.apache.commons.imaging.common.ImageMetadata.ImageMetadataItem;
+import org.apache.commons.imaging.common.bytesource.ByteSourceFile;
+import org.apache.commons.imaging.examples.ImageReadExample.ManagedImageBufferedImageFactory;
+import org.apache.commons.imaging.formats.tiff.TiffContents;
+import org.apache.commons.imaging.formats.tiff.TiffDirectory;
+import org.apache.commons.imaging.formats.tiff.TiffElement.DataElement;
+import org.apache.commons.imaging.formats.tiff.TiffImageData;
+import org.apache.commons.imaging.formats.tiff.TiffReader;
+import org.apache.commons.imaging.formats.tiff.constants.TiffConstants;
+import tiffUtility.MetadataExample;
 
 /**
  *
@@ -55,6 +78,8 @@ public class Dem {
     Rectangle2D rectBox = new Rectangle2D.Double();
     public Rectangle2D adjRect2DBox = new Rectangle2D.Double();
     Rectangle rectBoxIdx = new Rectangle();
+    
+    File file;
     /*
     *  constructor to get the upper left corner then the width and length of the boundary
     * 1. read parameter settings from header file
@@ -65,7 +90,7 @@ public class Dem {
     // https://stackoverflow.com/questions/581873/best-way-to-handle-multiple-constructors-in-java
           
       
-    public Dem (Rectangle2D rectBox){
+    public Dem (Rectangle2D rectBox) {
          
        this (rectBox, 
                new UserProperties().getProperties("Gtopo30.dem.dir"), 
@@ -76,7 +101,7 @@ public class Dem {
     
     
     
-    public Dem (Rectangle2D rectBox, Integer lrExt){
+    public Dem (Rectangle2D rectBox, Integer lrExt) {
          
        this (rectBox, 
                new UserProperties().getProperties("Gtopo30.dem.dir"), 
@@ -85,72 +110,57 @@ public class Dem {
                
     }
     
-     public Dem (Rectangle2D rectBox, String strDemDir, String strDemFileName){
+     public Dem (Rectangle2D rectBox, String strDemDir, String strDemFileName) {
        this (rectBox, strDemDir, strDemFileName, 0);
                 
          
      }
     
-    public Dem (Rectangle2D rectBox, String strDemDir, String strDemFileName, Integer lrExt){
+     public Dem (Rectangle2D rectBox, String strDemDir, String strDemFileName, Integer lrExt) {
+         this (rectBox, strDemDir, strDemFileName, 0, 0);
+     }
+     
+    public Dem (Rectangle2D rectBox, String strDemDir, String strDemFileName,
+            Integer lrExt, Integer mapFileType) {
         
         this.rectBox = rectBox;
         
         this.strDemDir = strDemDir;
         this.strDemFileName = strDemFileName;
-        readHdr();
-        /*
-        // old method, but it may not covers the planned rectangle depending on where
-        // the index of the map aligns with calculation of index
         
-        // focus on the box boundary defined in the constructor
-        this.rectBoxIdx = new Rectangle (
-                (int) ((this.rectBox.getX() - this.ulXmap)/this.xDim),
-                (int) ((- this.rectBox.getY() + this.ulYmap)/this.yDim),
-                (int) (this.rectBox.getWidth()/this.xDim), 
-                (int) (this.rectBox.getHeight()/this.yDim)
-            );
-        
-        // recalculate the Box boundary in lat and long degree.
-        this.adjRect2DBox.setRect(
-                this.rectBoxIdx.x * this.xDim + this.ulXmap, 
-                - this.rectBoxIdx.y * this.yDim + this.ulYmap,
-                this.rectBoxIdx.width * this.xDim, this.rectBoxIdx.height * this.yDim
-                );
+        if (mapFileType == 0) {
+            this.file = new File(strDemDir+"\\"+strDemFileName+".dem");     
+        } else if (mapFileType == 1) {
+            this.file = new File(strDemDir+"\\"+strDemFileName+".tif");     
+        }
         
         
-        */
+        readHdr(mapFileType);
+       
         // redefine the ul and lr corner to match the matrix points as 
         // contained in the goto 30sec map
         // it ensures the original ul and lr corner are covered.
-        double ulX, ulY, lrX, lrY;  // new ul and lr corner of the rectBox
         
         int ulIdX, ulIdY, lrIdX, lrIdY, idW, idH;
         // the ul corner should be tended leftward and upward towards the map's UL corner, hence floor
         ulIdX = (int) Math.max(0, Math.floor((this.rectBox.getX() - this.ulXmap)/this.xDim));
         ulIdY = (int) Math.max(0, Math.floor((this.ulYmap - this.rectBox.getY())/this.yDim));
         // conversely the lr corner should be tended rightward and downward away from the maps's UL corner, hence ceiling
-        double inputLrX, inputLrY;      // original planned lower right corner (in degree) to be included 
         
-        
-        // but still within the current confined area of map
-        // and extend one unit further if set so in the user property via LREXT
-        
-        /*
-        // this work
-        inputLrX = this.rectBox.getX() + this.rectBox.getWidth();
-        inputLrY = this.rectBox.getY() - this.rectBox.getHeight();      // does this still work for southern hemisphere??
-        
-        lrIdX = (int) Math.min(this.nCols, Math.ceil((inputLrX - this.ulXmap)/this.xDim)+(lrExt == 1? 1: 0));
-        lrIdY = (int) Math.min(this.nRows, Math.ceil((this.ulYmap - inputLrY)/this.yDim)+(lrExt == 1? 1: 0));
-        idW = lrIdX - ulIdX;
-        idH = lrIdY - ulIdY;  // not reverse, as idx is ascending downwards, ulik Y latitude which is descending downwards
-        
-        */
         // attempt to seam the tile with the other one
         
         idW = (int) Math.round(this.rectBox.getWidth() / this.xDim) +(lrExt == 1? 1: 0);
         idH = (int) Math.round(this.rectBox.getHeight() / this.yDim) +(lrExt == 1? 1: 0);
+       
+        // but idW and idH must be within the bound of the width and height of the map
         
+   //     idW = Math.min(idW, this.nCols-ulIdX);
+   //     idH = Math.min(idH, this.nRows-ulIdY);
+         idW = Math.min(idW, this.nCols-ulIdX);
+        idH = Math.min(idH, this.nRows-ulIdY);
+      
+   
+//
         lrIdX = ulIdX + idW;
         lrIdY = ulIdY + idH;
         
@@ -167,18 +177,11 @@ public class Dem {
         );
         
         
-        
-        
-        
-        
-        
         StringBuilder sb = new StringBuilder("");
         
         sb.append("rectangle of map:\n");
         sb.append("(").append(this.ulXmap).append(", ").append(this.ulYmap).append(", ")
                 .append(this.nCols).append(", ").append(this.nRows).append(")");
-        
-        
         
         sb.append("\nrectangle of rectBox input:\n");
         sb.append("(").append(this.rectBox.getX()).append(", ").append(this.rectBox.getY()).append(", ")
@@ -188,7 +191,6 @@ public class Dem {
         sb.append("(").append(this.rectBox.getX() + this.rectBox.getWidth())
                 .append(", ").append(this.rectBox.getY()-this.rectBox.getHeight())
                 .append(")");
-        
         
         sb.append("\nrectangle of rectBox adjusted in degree:\n");
         sb.append("(").append(this.adjRect2DBox.getX()).append(", ").append(this.adjRect2DBox.getY()).append(", ")
@@ -203,13 +205,7 @@ public class Dem {
         sb.append("(").append(this.rectBoxIdx.x).append(", ").append(this.rectBoxIdx.y).append(", ")
                 .append(this.rectBoxIdx.width).append(", ").append(this.rectBoxIdx.height).append(")");
         
-        
-        
         logger.log(Level.INFO, sb.toString());
-                
-        
-                
-            //    = new Rectangle2D (0,0,0,0
         
     }
     
@@ -241,31 +237,101 @@ public class Dem {
         
     }
     
-    private void readHdr() {
-         Properties prop = new Properties();
-        try {
-            prop.load(new FileInputStream(strDemDir+"\\"+strDemFileName+".hdr"));
-            byteOrder=prop.getProperty("BYTEORDER", "M");
-            layout = prop.getProperty("LAYOUT", "BIL"); 
-            nRows = Integer.parseInt(prop.getProperty("NROWS")); 
-            nCols = Integer.parseInt(prop.getProperty("NCOLS")); 
-            nBands = Integer.parseInt(prop.getProperty("NBANDS")); 
-            nBits = Integer.parseInt(prop.getProperty("NBITS")); 
-            bandRowBytes = Integer.parseInt(prop.getProperty("BANDROWBYTES")); 
-            totalRowBytes = Integer.parseInt(prop.getProperty("TOTALROWBYTES")); 
-            bandGapBytes = Integer.parseInt(prop.getProperty("BANDROWBYTES")); 
-            noData = Integer.parseInt(prop.getProperty("NODATA", "-9999")); // value used for masking  
-            ulXmap = Double.parseDouble(prop.getProperty("ULXMAP")); 
-            ulYmap = Double.parseDouble(prop.getProperty("ULYMAP")); 
-            xDim  = Double.parseDouble(prop.getProperty("XDIM")); 
-            yDim  = Double.parseDouble(prop.getProperty("YDIM")); 
-            
-            
-            // Band interleaved by line.  note that the DEM is a single band image
-            
-        } catch (IOException ex) {
-            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+    private void readHdr(Integer mapFileType)  {
+        
+        if (mapFileType == 0){
+            Properties prop = new Properties();
+                try {
+                    prop.load(new FileInputStream(strDemDir+"\\"+strDemFileName+".hdr"));
+                    byteOrder=prop.getProperty("BYTEORDER", "M");
+                    layout = prop.getProperty("LAYOUT", "BIL"); 
+                    nRows = Integer.parseInt(prop.getProperty("NROWS")); 
+                    nCols = Integer.parseInt(prop.getProperty("NCOLS")); 
+                    nBands = Integer.parseInt(prop.getProperty("NBANDS")); 
+                    nBits = Integer.parseInt(prop.getProperty("NBITS")); 
+                    bandRowBytes = Integer.parseInt(prop.getProperty("BANDROWBYTES")); 
+                    totalRowBytes = Integer.parseInt(prop.getProperty("TOTALROWBYTES")); 
+                    bandGapBytes = Integer.parseInt(prop.getProperty("BANDROWBYTES")); 
+                    noData = Integer.parseInt(prop.getProperty("NODATA", "-9999")); // value used for masking  
+                    ulXmap = Double.parseDouble(prop.getProperty("ULXMAP")); 
+                    ulYmap = Double.parseDouble(prop.getProperty("ULYMAP")); 
+                    xDim  = Double.parseDouble(prop.getProperty("XDIM")); 
+                    yDim  = Double.parseDouble(prop.getProperty("YDIM")); 
+
+
+                    // Band interleaved by line.  note that the DEM is a single band image
+
+                } catch (IOException ex) {
+                    Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+                }
+        } else if (mapFileType == 1) {
+   
+                try {
+                    
+                File file = new File(strDemDir+"\\"+strDemFileName+".tif");
+                final ImageMetadata metadata = Imaging.getMetadata(file);
+                // List<ImageMetadataItem> mdList = new ArrayList<ImageMetadataItem>();
+
+                Properties propMetadata = new Properties();
+                propMetadata.load(new StringReader(metadata.toString()));
+
+
+                String[] s = null;
+                // get image width and length
+                this.nCols = Integer.parseInt(propMetadata.getProperty("ImageWidth"));
+                this.nRows = Integer.parseInt(propMetadata.getProperty("ImageLength"));
+                Integer bitsPerSample = Integer.parseInt(propMetadata.getProperty("BitsPerSample"));
+                Integer compression = Integer.parseInt(propMetadata.getProperty("Compression"));
+                Integer photometricInterpretation = Integer.parseInt(propMetadata.getProperty("PhotometricInterpretation"));
+                Integer samplesPerPixel = Integer.parseInt(propMetadata.getProperty("SamplesPerPixel"));
+                Integer planarConfiguration = Integer.parseInt(propMetadata.getProperty("PlanarConfiguration"));
+                Integer sampleFormat = Integer.parseInt(propMetadata.getProperty("SampleFormat"));
+                String geoAsciiParamsTag = propMetadata.getProperty("GeoAsciiParamsTag");
+                String gDALNoData = propMetadata.getProperty("GDALNoData");
+
+
+                // get modelPixelScaleTag
+
+                ArrayList<Double> modelPixelScaleTagList = new ArrayList<>();
+                Arrays.asList(propMetadata.getProperty("ModelPixelScaleTag").split(",")).forEach((e) ->{
+                    modelPixelScaleTagList.add(Double.parseDouble(e));
+
+                });
+
+                this.xDim = modelPixelScaleTagList.get(0);
+                this.yDim = modelPixelScaleTagList.get(1);
+
+                // get modelTiePointTag
+                ArrayList<Double> modelTiepointTagList = new ArrayList<>();
+                Arrays.asList(propMetadata.getProperty("ModelTiepointTag").split(",")).forEach((e) ->{
+                    modelTiepointTagList.add(Double.parseDouble(e));
+
+                });
+                this.ulXmap = modelTiepointTagList.get(3);
+                this.ulYmap = modelTiepointTagList.get(4);
+
+                // print out
+                StringBuilder sbProp = new StringBuilder("\nImageMetadata read as properties:\n");
+                sbProp.append("width: "+this.nCols + " length: "+ this.nRows + "\n");
+                sbProp.append("xResolation: " + this.xDim + ", yResolation: " + this.yDim + "\n");
+                sbProp.append("xMap: " + this.ulXmap + ", yMap: " + this.ulYmap + "\n");
+                sbProp.append("\nmetadata:\n"+metadata);
+                
+                logger.log(Level.INFO, sbProp.toString());
+                
+                
+            } catch (ImageReadException ex) {
+                Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (IOException ex) {
+                Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+            }
+
+
         }
+            
+            
+        
+         
     }
     /*
     source: https://docs.oracle.com/javase/7/docs/api/javax/imageio/stream/ImageInputStream.html#setByteOrder(java.nio.ByteOrder)
@@ -277,10 +343,10 @@ public class Dem {
     public void readDem()  {
         FileInputStream fis = null;
         try {
-            File file = new File(strDemDir+"\\"+strDemFileName+".dem");        
+            // File file = new File(strDemDir+"\\"+strDemFileName+".dem");        
             //   ByteArrayOutputStream bos = new ByteArrayOutputStream();
             // FileInputStream obtains streams of bytes
-            fis = new FileInputStream(file);
+            fis = new FileInputStream(this.file);
 //            DataInputStream dis = new DataInputStream(fis);
           //  ImageInputStream dis = new ImageInputStream(fis);
             ImageInputStream in = ImageIO.createImageInputStream(fis);
@@ -400,12 +466,139 @@ public class Dem {
         
        // Dem gt30w020n90Dem = new Dem(boxBoundary, FileDir, FileNamePt1);
        
-       Dem gt30w020n90Dem = new Dem(rect2DBox);
-        gt30w020n90Dem.toStringHdr();
-        gt30w020n90Dem.readDem();
+       Dem gt30w020n90Dem;
+       gt30w020n90Dem = new Dem(rect2DBox);
+       gt30w020n90Dem.toStringHdr();
+       gt30w020n90Dem.readDem();
+
         
         
     }
+
+    
+    /*
+    read from dmted2010 source in tiff format
+    */
+    void readTiff() {
+        
+        
+        try {
+            
+            
+            TiffReader tiffReader = new TiffReader(true);
+            ByteSourceFile byteSource = new ByteSourceFile(this.file);
+            
+            // read the directories in the tiff file,
+            // may include image and metadata
+            
+            TiffContents contents = tiffReader.readDirectories(
+                    byteSource,
+                    true,
+                    FormatCompliance.getDefault());
+            
+            // read the first image File Directory (IFD)
+            // as the first IFD is the full resolution image plus its meta data
+            // the other directories may be of lessor resolution
+            // but for GMTED2010 there should be just one directory
+            // and without raster dataset
+            
+            TiffDirectory firstDir = contents.directories.get(0);
+            if (firstDir.hasTiffImageData()){
+                logger.log(Level.INFO, "first directory got TiffImageData in the file: {0}", file.toString());
+                
+                
+                TiffImageData tiffImageData = firstDir.getTiffImageData();
+                DataElement[] de = tiffImageData.getImageData();
+                
+                this.z = new short[rectBoxIdx.height][rectBoxIdx.width];
+                this.z = ExtractFromDataElement(de, rectBoxIdx).clone();
+                
+                /*
+                final Map<String, Object> params = new HashMap<>();
+                // try sub image on the tiff data, see if they work
+                // http://commons.apache.org/proper/commons-imaging/apidocs/org/apache/commons/imaging/formats/tiff/TiffDirectory.html
+                // BufferedImage subBufferImage = theImage.getSubimage(rectBoxIdx.x, rectBoxIdx.y, rectBoxIdx.width, rectBoxIdx.height);
+                params.put(TiffConstants.PARAM_KEY_SUBIMAGE_X, rectBoxIdx.x);
+                params.put(TiffConstants.PARAM_KEY_SUBIMAGE_Y, rectBoxIdx.y);
+                params.put(TiffConstants.PARAM_KEY_SUBIMAGE_WIDTH, rectBoxIdx.width);
+                params.put(TiffConstants.PARAM_KEY_SUBIMAGE_HEIGHT, rectBoxIdx.height);
+                
+                
+
+                BufferedImage subBufferedImage = firstDir.getTiffImage(params);
+                subBufferedImage.getData();
+//
+
+            WritableRaster subRaster =
+                ((WritableRaster) subBufferedImage.getData()).createWritableTranslatedChild(0,0);
+
+                BufferedImage subOne = new BufferedImage(subBufferedImage.getColorModel(),
+                        subRaster, subBufferedImage.isAlphaPremultiplied(), null);
+
+            
+                
+            int[] pixelsSubOneInt = 
+                    ((DataBufferInt) subOne.getRaster().getDataBuffer()).getData();
+            //    short[] pixelsSubOne = ((DataBufferUShort) 
+            //        subOne.getRaster().getDataBuffer()).getData();
+
+            showImg(subOne);
+        logger.log(Level.INFO, "new subOne has data length of {0}", pixelsSubOneInt.length);
+
+        z = new short[rectBoxIdx.height][rectBoxIdx.width];
+
+for (int i=0; i<rectBoxIdx.height; i++ ) {
+    for (int j=0; j<rectBoxIdx.width; j++){
+        z[i][j] = (short) pixelsSubOneInt[i*rectBoxIdx.width + j];
+    }
+}    
+                
+                
+                */
+                
+    
+
+               
+                
+            } else {
+                logger.log(Level.SEVERE, "no directories in the file: {0}", file.toString());
+                System.exit(-1);
+            }
+
+        } catch (ImageReadException ex) {
+            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (IOException ex) {
+            Logger.getLogger(Dem.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }    
+
+    private short[][] ExtractFromDataElement(DataElement[] de, Rectangle rectBoxIdx) {
+      short [][] zVal = new short[rectBoxIdx.height][rectBoxIdx.width];   
+      
+      
+            
+      for (int r=0; r<rectBoxIdx.height; r++) {
+            // stream data row by row, 
+            byte[] byteData = de[r+ rectBoxIdx.y].getData();
+            
+            // short[] shortArray = new short[rectBoxIdx.width];  
+            short[] shortArray = new short[byteData.length/2];  
+            ByteBuffer.wrap(byteData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(shortArray);
+            
+            for (int c = 0; c<rectBoxIdx.width; c++){
+                short shortVal = shortArray[c+rectBoxIdx.x];
+                zVal[r][c] = shortVal;
+            }
+                
+            
+        }
+        
+      
+      return zVal;  
+    } 
+        
+        
+    
 
     
 }

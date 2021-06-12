@@ -6,8 +6,12 @@
 package model;
 
 import java.awt.geom.Rectangle2D;
+import java.io.IOException;
 import java.util.Properties;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import munrov2.Dem;
+import org.apache.commons.imaging.ImageReadException;
 import static utility.UtilsD.convDegToENFactor;
 
 /**
@@ -100,19 +104,17 @@ public class MyVertice implements Vertice {
     }        
         
     public String toString(Properties boxProp){
-            Rectangle2D rect2DBox = new Rectangle2D.Double(
-            Double.parseDouble(boxProp.getProperty("ULXMAP")),
-            Double.parseDouble(boxProp.getProperty("ULYMAP")),
-            Double.parseDouble(boxProp.getProperty("WIDTH")),
-            Double.parseDouble(boxProp.getProperty("HEIGHT"))
-         );
-                Dem dem = new Dem(rect2DBox, 
-                boxProp.getProperty("Gtopo30.dem.dir"), 
-                boxProp.getProperty("default.demFileNamePt1")); 
-  
+        Rectangle2D rect2DBox = new Rectangle2D.Double(
+                Double.parseDouble(boxProp.getProperty("ULXMAP")),
+                Double.parseDouble(boxProp.getProperty("ULYMAP")),
+                Double.parseDouble(boxProp.getProperty("WIDTH")),
+                Double.parseDouble(boxProp.getProperty("HEIGHT"))
+        );
+        Dem dem = new Dem(rect2DBox,
+                boxProp.getProperty("Gtopo30.dem.dir"),
+                boxProp.getProperty("default.demFileNamePt1"));
         double xTrueO = Double.parseDouble(boxProp.getProperty("XTRUEO","0.0"));
         double yTrueO = Double.parseDouble(boxProp.getProperty("YTRUEO","0.0"));
-        // offset to falso origin:  eFalseOff, nFalse e' = e + eFalseOff; n' = n + nFalseOff
         double eFalseO = Double.parseDouble(boxProp.getProperty("EFALSEO","0.0"));
         double nFalseO = Double.parseDouble(boxProp.getProperty("NFALSEO","0.0"));
         double seaRepZ = Double.parseDouble(boxProp.getProperty("SEAREPZ","-0"));
@@ -121,43 +123,12 @@ public class MyVertice implements Vertice {
         double zExagg = Double.parseDouble(boxProp.getProperty("ZEXAGG","1.0"));
         double baseDepth = Double.parseDouble(boxProp.getProperty("BASEDEPTHPCT","0.05")) *
                 dem.adjRect2DBox.getWidth()*convDegToENFactor(dem.adjRect2DBox.getY())[0];
-        
-        // double measUnit, double seaRepZ
-        
-            
-            /*
-        // sea was represented by usgs as -9999.  changed to a new value here.
-        //   xyIncStep = 30.0/3600;  // need to use 30.0 otherwise the division would be treated as int and as result xyIncStep become zero.
-        // ground distance for 30-arc seconds         
-        // get the scale to translate deg to meter;   0.001 refers to km, 1 refers to m.
-                
-            */
-            StringBuilder sb = new StringBuilder("");    
-            double[] eNZ = getENZ(xTrueO, yTrueO, eFalseO, nFalseO);
-           sb.append("v ").append(eNZ[0] * measUnit);
-           sb.append(" ").append(eNZ[1] * measUnit);
-           // Z of the geographical model should be pushed upwards by the baseDepth to 
-           // avoid negative z,
-           // because it is an offset and is dependent on width of the model
-           // so baseDepth should be outside the calculation of z itself
-           // sb.append(" ").append((((z == -9999) ? seaRepZ  : z * zExagg) + baseDepth)* measUnit  ).append("\n");
-           // zGWSeaLvl is the sea level rise due to global warming.  land below this level 
-           // would be submerged and represented as 80% of the seaDepth (should be in negative figure in the hdr file
-           
-           
-           sb.append(" ").append((z * zExagg + baseDepth*0)* measUnit).append("\n");
-           
-           /*
-           sb.append(" ").append((((z == -9999) ? 
-                   seaRepZ  : 
-                   ((z > zGWSeaLvl) ? z * zExagg : seaRepZ * 1.5)  // when z less than zGWSeaLvl it go deeper then sea level
-                        ) 
-                    + baseDepth)* measUnit)
-                   .append("\n");
-           
-           */
-           
-           return sb.toString();
+        StringBuilder sb = new StringBuilder("");
+        double[] eNZ = getENZ(xTrueO, yTrueO, eFalseO, nFalseO);
+        sb.append("v ").append(eNZ[0] * measUnit);
+        sb.append(" ").append(eNZ[1] * measUnit);
+        sb.append(" ").append((z * zExagg + baseDepth*0)* measUnit).append("\n");
+        return sb.toString();
         }
 
     public String toStringForWFObjWriter(Properties boxProp){
