@@ -924,6 +924,9 @@ public class WFObjWriter {
      //   String boxName = "taiwanGMTED150";  
        String boxName = "taiwanGMTED150Left";  
         
+       // scotland 1st print for rectangular design
+       boxName = "scotlandV2";  
+       
         WFObjWriter obj = new WFObjWriter(boxName);
         // obj.CreateVertices();
         // obj.CreateSurfaces();

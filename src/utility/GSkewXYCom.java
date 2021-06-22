@@ -41,6 +41,13 @@ public class GSkewXYCom {
         double tangent = - xShift/yLength;
         double cos = yLength/Math.sqrt(xShift*xShift + yLength*yLength);
         
+        double minX = 999.9, minY = 999.9, maxX = -999.9, maxY= -999.9;
+        
+        // make sure it comes with the backlash
+        if (dir.substring(dir.length()) != "\\"){
+            dir += "\\";
+        }
+        
         try {
             File file = new File(dir + fileName);
 
@@ -61,6 +68,17 @@ public class GSkewXYCom {
                
                double[] compPoint = null;
                compPoint = calCompPoint(newPoint, tangent, cos);
+               if (compPoint != null) {
+                   
+                   // home position is not compared
+                   if ((compPoint[0]!=0.0) && (compPoint[1]!=0.0)) {
+                        minX = Math.min(minX, compPoint[0]);
+                        minY = Math.min(minY, compPoint[1]);
+                   }
+                    maxX = Math.max(maxX, compPoint[0]);
+                    maxY = Math.max(maxY, compPoint[1]);
+                   
+               } 
                
                 // replace the line with comPoint
                 String newLine ="";
@@ -74,7 +92,10 @@ public class GSkewXYCom {
             }
             fr.close();
             
-            System.out.println("complete conversion, writting to file...");
+
+                    System.out.println("complete conversion, writting to file...");
+            
+            
             // System.out.println(outSb.toString());
             
         } catch (FileNotFoundException ex) {
@@ -84,9 +105,35 @@ public class GSkewXYCom {
         } finally {
         }
         
+            String outFileName = dir + "Converted_"+fileName;
+        
+            StringBuilder sbRecord = new StringBuilder("; conversion output:\n");
+            sbRecord.append("; input file: " + dir + fileName + "\n");
+            sbRecord.append("; output file: " + outFileName + "\n");
+            sbRecord.append("; xShift/xLength: " + xShift 
+                    + "mm shift in x (-ve to left and +ve to right) per a traverse in y direction of " 
+                    + yLength + "mm\n"); 
+            sbRecord.append("; max x, y = " + maxX + ", " +  maxY +
+                             "min x, y = " + minX + ", " +  minY + "\n");
+            sbRecord.append("; if max x exceeding the maximum allowable X use G92 to offset by"
+                    + "at least the amount of (maxX in code - printMaxX) or reduce the scale\n");
+            
+            
+            // add to the gcode for records
+            
+            sb.append(sbRecord.toString());
+            System.out.println(sbRecord.toString());
+        
+        
+            
+        
+        
+        
+        
     // write to file
         try {
-            FileOutputStream fos = new FileOutputStream(dir + "Converted_"+fileName);
+            
+            FileOutputStream fos = new FileOutputStream(outFileName);
             byte[] bytesArray = sb.toString().getBytes();
             
             fos.write(bytesArray);
@@ -97,7 +144,10 @@ public class GSkewXYCom {
         } catch (IOException ex) {
             Logger.getLogger(GSkewXYCom.class.getName()).log(Level.SEVERE, null, ex);
         }
-             
+        
+        
+
+            
     }
     
     /*
@@ -213,9 +263,47 @@ public class GSkewXYCom {
          String fileName = "taiwanGMTED2010_150V2-box_001_app.gcode";
          // taiwan box 7th print with key hole
          fileName = "taiwanGMTED2010_150V2-box_001_app_001.gcode";
-         // 8th print with key hole and brim
+         // 8th print for box with key hole and brim
          fileName = "taiwanGMTED2010_150V2-box_001_app.gcode";
-         double shift = -3.5; // shift to the left in 123mm of upward Y
+         // 9th print for box, 
+         fileName = "taiwanGMTED2010_150V2-box_001_app_scale036.gcode";
+         // 9th print for model
+         fileName = "taiwanGMTED2010_150V2-taiwanGMTED150V1obj_001_app_code_scale036.gcode";
+         // 9th print for model, greater scale to max the length to 200
+         // fileName = "taiwanGMTED2010_150V2-taiwanGMTED150V1obj_001_app_code.gcode";
+         // 1st print for iceland verticle, and with a matching box
+         dir = "F:\\Users\\Think\\MunroProject\\iceLandMap\\";
+         fileName ="icelandRectV2-iceLandV2Union_001.gcode";
+         // 1st print for iceland vertical box
+         fileName = "icelandRectV2-box_001.gcode";
+         //10th print for taiwan, make further xShift (1.304mm to the left)
+         fileName = "taiwanGMTED2010_150V2-taiwanGMTED150V1obj_001_app_code_scale036.gcode";
+         dir = "F:\\Users\\Think\\MunroProject\\taiwanMap\\";
+         // 10th print for taiwan box, make further xShift as above for the model
+        // fileName = "taiwanGMTED2010_150V2-box_001_app_scale036.gcode";
+        // standard box first print, based on golden ration 170 x 105 mm
+        dir = "F:\\Users\\Think\\MunroProject";
+        fileName = "standardBox-externalBlk_001.gcode";
+        // 2nd print iceland with 170x105 dimension
+        dir = "F:\\Users\\Think\\MunroProject\\iceLandMap\\";
+        fileName = "icelandRectV3-iceLandV2Union_002.gcode";
+        // 1st print for scotland rectangle with box design
+        dir = "F:\\Users\\Think\\MunroProject\\scotlandMap\\";
+        fileName = "scotlandRectV2-scotlandRectV1Union_001_app.gcode";
+        // 2nd print for rectangle box with keyhole on longedge
+        dir = "F:\\Users\\Think\\MunroProject\\standardBox170x105";
+        fileName = "standardBoxV2-box_001_app_keyholeOnLongEdge.gcode";
+        // himalaya model
+        dir = "F:\\Users\\Think\\MunroProject\\indiaMap\\RectV1";
+       fileName = "himalayaPlusTibetRectV1-indianX70Y38W15H3V3_obj_002_app.gcode";
+       //unst rect model p1
+        dir = "F:\\Users\\Think\\MunroProject\\unstMap\\";
+       fileName = "unstRect170x105V1-unstV3ZEexagg08_obj_002_app.gcode";
+       
+         
+         // double shift = -3.5-1.394; // shift to the left in 123mm of upward Y
+         double shift = -3.5+1.394; // shift to the left in 123mm of upward Y
+
          double yLength = 123.0;
          convert(dir, fileName, shift, yLength);
      
