@@ -137,6 +137,16 @@ public class Dem {
         
         readHdr(mapFileType);
        
+        
+        // adjust the width and height if the upper left corner of the target map is //
+        // to the left and north of the upper left corner of the tile
+        
+        double xShift, yShift;
+        xShift = Math.min(this.rectBox.getX() - this.ulXmap, 0 ); 
+        yShift = Math.min(this.ulYmap - this.rectBox.getY(), 0 ); 
+        
+        
+        
         // redefine the ul and lr corner to match the matrix points as 
         // contained in the goto 30sec map
         // it ensures the original ul and lr corner are covered.
@@ -149,9 +159,13 @@ public class Dem {
         
         // attempt to seam the tile with the other one
         
-        idW = (int) Math.round(this.rectBox.getWidth() / this.xDim) +(lrExt == 1? 1: 0);
-        idH = (int) Math.round(this.rectBox.getHeight() / this.yDim) +(lrExt == 1? 1: 0);
+        // idW = (int) Math.round(this.rectBox.getWidth() / this.xDim) +(lrExt == 1? 1: 0);
+        // idH = (int) Math.round(this.rectBox.getHeight() / this.yDim) +(lrExt == 1? 1: 0);
        
+        idW = (int) Math.round((this.rectBox.getWidth() + xShift)/ this.xDim) +(lrExt == 1? 1: 0);
+        idH = (int) Math.round((this.rectBox.getHeight() + yShift) / this.yDim) +(lrExt == 1? 1: 0);
+       
+        
         // but idW and idH must be within the bound of the width and height of the map
         
    //     idW = Math.min(idW, this.nCols-ulIdX);

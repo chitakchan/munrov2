@@ -5,6 +5,7 @@
  */
 package munrov2;
 
+import java.awt.List;
 import java.awt.Rectangle;
 import java.awt.geom.Rectangle2D;
 import java.io.FileInputStream;
@@ -12,6 +13,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import static java.lang.Double.max;
 import static java.lang.Double.min;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Properties;
@@ -78,6 +84,11 @@ public class WFObjWriter {
     private final int lrExt;
     private ArrayList<Vertice> boxCornerVertices = new ArrayList<Vertice>();
     private final double seaSrcZ;
+
+// effort to automate process for repeating several runs with the same height of latitude
+    private WFObjWriter(String boxName){
+        this(boxName, 0);
+    }
     
 
     /**
@@ -85,7 +96,7 @@ public class WFObjWriter {
      * provide all necessary parameters in a file 
      * @param boxProp 
      */
-    private WFObjWriter(String boxName) {
+    public WFObjWriter(String boxName, int numRuns) {
         
         
         prop = new UserProperties();
@@ -100,13 +111,7 @@ public class WFObjWriter {
         
         this.boxProp = boxProp;
                 
-        Rectangle2D rect2DBox = new Rectangle2D.Double(
-        Double.parseDouble(boxProp.getProperty("ULXMAP")),
-        Double.parseDouble(boxProp.getProperty("ULYMAP")),
-        Double.parseDouble(boxProp.getProperty("WIDTH")),
-        Double.parseDouble(boxProp.getProperty("HEIGHT"))
-        );
-
+        
         this.title = boxProp.getProperty("TITLE","");
         this.seaSrcZ = Double.parseDouble(boxProp.getProperty("SEASRCZ","-9999.0"));
         this.seaRepZ = Double.parseDouble(boxProp.getProperty("SEAREPZ","-0"));
@@ -128,13 +133,34 @@ public class WFObjWriter {
         this.zFixedElv = Double.parseDouble(boxProp.getProperty("ZFIXEDELV", "-9999.9"));
         this.lrExt = Integer.parseUnsignedInt(boxProp.getProperty("LREXT", "0"));
         this.mapFileType = Integer.parseUnsignedInt(boxProp.getProperty("MAPFILETYPE", "0"));
+        this.baseDepth = Double.parseDouble(boxProp.getProperty("BASEDEPTH","-1000.0")) + this.seaRepZ; 
+        this.offsetZBaseDepthFlag = Integer.parseInt(boxProp.getProperty("OFFSETZBASEDEPTHFLAG","0")); 
+        this.printWidth = Double.parseDouble(boxProp.getProperty("PRINTWIDTH","0.100"));
+        this.prnLayerHt = Double.parseDouble(boxProp.getProperty("PRINTLAYERHEIGHT","0.3"));
+        this.outFileDir = boxProp.getProperty("OUTFILEDIR", this.prop.getProperties("my.dear.home"));
+        
+        logger.setLevel(Level.INFO);
+
 // create a dem object and retrieve the relevant idx of the box from its calculation
-         
+        
+        
+            Rectangle2D rect2DBox = new Rectangle2D.Double(
+                Double.parseDouble(boxProp.getProperty("ULXMAP")),
+                Double.parseDouble(boxProp.getProperty("ULYMAP")) 
+                        - numRuns * Double.parseDouble(boxProp.getProperty("HEIGHT")),
+                Double.parseDouble(boxProp.getProperty("WIDTH")),
+                Double.parseDouble(boxProp.getProperty("HEIGHT"))
+                );
+        
+
         this.dem = new Dem(rect2DBox, 
                 boxProp.getProperty("Gtopo30.dem.dir"), 
                 boxProp.getProperty("default.demFileNamePt1"),
                 this.lrExt, this.mapFileType);            
         this.rectBoxIdx = dem.rectBoxIdx;
+        
+        
+        
         this.xyIncStep = dem.xDim;  // should be 30/3600 deg between two idx
         this.adjRect2DBox = dem.adjRect2DBox;
         
@@ -146,8 +172,6 @@ public class WFObjWriter {
           boxCornerVertices.add(new Vertice(0,this.rectBoxIdx.width-1, 0));
           boxCornerVertices.add(new Vertice(this.rectBoxIdx.height-1,0 ,0));
           boxCornerVertices.add( new Vertice(rectBoxIdx.height-1, this.rectBoxIdx.width-1, 0));
-         
-        
         
         // calculate the depth of the base
         // BASEDEPTH is the thickness of the base in meter calculated from applying a 
@@ -158,17 +182,21 @@ public class WFObjWriter {
                 this.adjRect2DBox.getWidth()*convDegToEN(this.adjRect2DBox.getY())[0];
         
         */ 
-         
-        this.baseDepth = Double.parseDouble(boxProp.getProperty("BASEDEPTH","-1000.0")) + this.seaRepZ; 
-        this.offsetZBaseDepthFlag = Integer.parseInt(boxProp.getProperty("OFFSETZBASEDEPTHFLAG","0")); 
-        this.printWidth = Double.parseDouble(boxProp.getProperty("PRINTWIDTH","0.100"));
-        this.prnLayerHt = Double.parseDouble(boxProp.getProperty("PRINTLAYERHEIGHT","0.3"));
-        this.outFileDir = boxProp.getProperty("OUTFILEDIR", this.prop.getProperties("my.dear.home"));
         
-        logger.setLevel(Level.INFO);
  
         this.CreateVertices();
         this.CreateSurfaces();
+        String title =this.boxProp.getProperty("TITLE");
+        
+        if (numRuns > 0 ){
+            
+            title += "_"+ numRuns;
+        } 
+        
+        this.WriteObjFile(title);
+        this.ProposedSettings(title);
+               
+        
         
         
         }
@@ -302,7 +330,7 @@ public class WFObjWriter {
      * zExagg:  a multiplier of the z, which when applying on the max height of 
      * the landscape would give a height of say 3mm when the width of the plate is 45mm
      */
-    private void ProposedSettings() {
+    private void ProposedSettings(String fileTitle) {
         
         // find out the proposed BASEDEPTHPCT
         StringBuilder sb = new StringBuilder("Fact sheet");
@@ -310,7 +338,11 @@ public class WFObjWriter {
         // double prnBaseDepth = 0.002; // desired thickness of the base, 2mm
 
         // scale the seaLevel and plate depth based on  the scale and the print bed and the desirable printbed
-        double outputModelWidth = this.adjRect2DBox.getWidth()*convDegToEN(this.adjRect2DBox.getY())[0];  // in meter
+        double fullWidth = 0;
+        fullWidth = Double.parseDouble(boxProp.getProperty("WIDTH"));
+        // since the adjRect2DBox.getWidth() may be only part of the map if several tiles are required
+        // double outputModelWidth = this.adjRect2DBox.getWidth()*convDegToEN(this.adjRect2DBox.getY())[0];  // in meter
+        double outputModelWidth = fullWidth*convDegToEN(this.adjRect2DBox.getY())[0];  // in meter
         double scale = prnWidth / outputModelWidth;
         double prnDepthBelowSea = scale * (this.baseDepth - this.seaRepZ);
         double prnSeaRepZ = scale * this.seaRepZ;
@@ -437,12 +469,12 @@ public class WFObjWriter {
     try {
 
         logger.log(Level.INFO, "Writing to file: {0}....", 
-                         this.outFileDir +"\\"+title + "Output.txt");
+                         this.outFileDir +"\\"+fileTitle + "Output.txt");
         
         logger.log(Level.FINE, "Writing sb: {0} \n total length: \n {1}", 
                          new Object[]{sb.toString(),sb.toString().length()} );
         
-        FileOutputStream fos = new FileOutputStream(this.outFileDir +"\\"+title + "Output.txt");
+        FileOutputStream fos = new FileOutputStream(this.outFileDir +"\\"+fileTitle + "Output.txt");
         byte[] bytesArray = sb.toString().getBytes();
 
 	  fos.write(bytesArray);
@@ -740,9 +772,14 @@ public class WFObjWriter {
           return sbBaseVertices.toString();
       }
     
-      
+    
     public void WriteObjFile() {
-        String fileName = this.boxProp.getProperty("TITLE") + ".obj";
+        String fileTitle = this.boxProp.getProperty("TITLE");
+        WriteObjFile(fileTitle);
+    }  
+      
+    public void WriteObjFile(String fileTitle) {
+        String fileName = fileTitle  + ".obj";
         String title = "o " + fileName;
         
         StringBuilder sb = new StringBuilder("");
@@ -774,8 +811,8 @@ public class WFObjWriter {
         sb.append(CreateBaseSurfaces());
         
         */
-        
-        logger.log(Level.FINE, "result of .obj: \n {0}", sb.toString() );
+// heap error        
+//        logger.log(Level.FINE, "result of .obj: \n {0}", sb.toString() );
         
         // write to file
         
@@ -783,16 +820,47 @@ public class WFObjWriter {
 
         logger.log(Level.INFO, "Writing to file: {0}....", 
                          this.outFileDir +"\\"+fileName);
-        
-        logger.log(Level.FINE, "Writing sb: {0} \n total length: \n {1}", 
-                         new Object[]{sb.toString(),sb.toString().length()} );
+// heap error        
+//        logger.log(Level.FINE, "Writing sb: {0} \n total length: \n {1}", 
+  //                       new Object[]{sb.toString(),sb.toString().length()} );
         
         FileOutputStream fos = new FileOutputStream(this.outFileDir +"\\"+fileName);
+        logger.log(Level.INFO, "length of substring is {0}\n", 
+                         sb.length());
+        /*
         byte[] bytesArray = sb.toString().getBytes();
-
+        
+        */
+        
+        // to use stringbuilder to byte without toString to avoid heap memory error (since
+        // string is immutable and occupy heap memory
+        // https://stackoverflow.com/questions/19472011/java-stringbuffer-to-byte-without-tostring
+        Charset charset = StandardCharsets.UTF_8;
+        CharsetEncoder encoder = charset.newEncoder();
+        // wraps the StringBuilder without the need to allocation to memory
+        CharBuffer buffer = CharBuffer.wrap(sb);
+        ByteBuffer bytes = encoder.encode(buffer);
+        
+        byte[] bytesArray;
+        int arrayLen = bytes.limit();
+        if (arrayLen == bytes.capacity()){
+            bytesArray = bytes.array();
+        } else {
+            // if the backing array is larger than the actual data, meaning its capacity is larger
+            // than its limit
+            bytesArray = new byte[arrayLen];
+            bytes.get(bytesArray);
+        
+        }
+        bytes = null;   // reference to null so that it can be garbage collected
+        
 	  fos.write(bytesArray);
 	  fos.flush();
     
+          
+          
+          
+          
         }   catch (IOException ex) {
             Logger.getLogger(WFObjWriter.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -926,12 +994,14 @@ public class WFObjWriter {
         
        // scotland 1st print for rectangular design
        boxName = "scotlandV2";  
+       // to solve the heap memory issue due to large map area and hence array size
+       boxName = "indiaV1Test";  
        
-        WFObjWriter obj = new WFObjWriter(boxName);
+        WFObjWriter obj = new WFObjWriter(boxName, 2);
         // obj.CreateVertices();
         // obj.CreateSurfaces();
-        obj.WriteObjFile();
-        obj.ProposedSettings();
+      //  obj.WriteObjFile();
+      //  obj.ProposedSettings();
         
     }   
     
