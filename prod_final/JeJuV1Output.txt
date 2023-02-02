@@ -1,0 +1,22 @@
+Fact sheet
+
+for title: JeJuV1
+mapping in degrees:  upper left (x,y) = (126.04, 33.70) with  (width, height) = ( 1.15, -0.62 ).
+in km of easting and northing:  upper left (e,n) = (95.86, 77.18) with  (width, height) = (107.77, -69.33 ).
+
+3D print size: with print scale of 1.12 mm : 1000 m (Note 1)
+print width (top of trapezium), 120.00 mm : 107030.00 m
+print depth of sea bed from ground level, -2.02 mm : -1800.0 m( 6.7 layers (Note 2))
+print depth of base from sea bed to bottom, -6.73 mm : -6000.0 m( 22.4 layers)
+print height of ben nevis, 10.23 mm (exaggerated at 5.0 ): 1824.0 m (elevation from dem file)( 34.1 layers)
+
+Note 1. to achieve the above, apply 1.12 in Repetitier Host. 
+
+Note 2. As each print layer is 0.30 mm, allow about two layers
+for the seabed and six layers for the base (from seabed to bottom), 
+calculate back to meter in hdr input file
+
+Note 3. total no. of layers = 63.2
+
+Note 4. it is desirable to have 3 layers printed at top surface, no layer printed at the bottom, and 
+whatever in-between is infill with pattern like honeycomb.
